@@ -84,6 +84,10 @@ WHERE r.nStorno = 0
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
+  -- Skip Temu belege. Temu was tested in late 2025 then rolled back; the
+  -- imported orders carry external order IDs starting with "PO-…". They are
+  -- intentionally out of scope (a separate Temu reports importer handles them).
+  AND (r.cExterneAuftragsnummer IS NULL OR r.cExterneAuftragsnummer NOT LIKE 'PO%')
   -- Bundle/configurator children carry no price/VAT — skip; the master line
   -- carries the totals. Master rows self-reference via kStuecklisteRechnungPos
   -- = kRechnungPosition; only true children (different value) must be filtered.
@@ -213,6 +217,9 @@ WHERE g.nStorno = 0
   AND g.dErstellt >= :hard_min
   AND g.dErstellt >= :date_from
   AND g.dErstellt <  :date_to_excl
+  -- Skip Temu credit notes (rolled-back Dec-2025 test): the original invoice
+  -- carries an "PO-…" external order number.
+  AND (r.cExterneAuftragsnummer IS NULL OR r.cExterneAuftragsnummer NOT LIKE 'PO%')
   -- Bundle children carry no price/VAT. Master rows self-reference via
   -- kGutschriftStueckliste = kGutschriftPos; only true children (different
   -- non-zero value) must be filtered out.
