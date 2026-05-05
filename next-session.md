@@ -2,16 +2,23 @@
 
 ## Status
 
-Architektur-Skelett + DB-Datenlese-Layer steht (12 Tests grün, ruff clean).
-DB-Schema komplett erfasst (`docs/db-schema.md`), `fetch_invoices` implementiert:
-708 eigene Rechnungen + 2835 externe Belege = 3543 April 2026.
-`.env` vorhanden, Connection getestet.
+Architektur-Skelett + DB-Datenlese-Layer + Reconcile-Pipeline stehen
+(20 Tests grün, ruff/mypy clean). 3 DB-Quellen integriert
+(`Rechnung.tRechnung`, `tExternerBeleg`, `dbo.tgutschrift`). Engine ist
+99,94% deckungsgleich mit JTL (8 Mismatches in Q1 2026 / 13 619 Belegen).
 
-**Nächste Phasen:** (1) Offene DB-Annahmen klären, (2) DATEV-Format-Spec + Steuer-Regeln verfeinern.
+**Nächste Phasen:** (1) Engine-Feintuning anhand der Q1-Mismatches,
+(2) DATEV-Format-Spec + Konten-Mapping, (3) DATEV-CSV-Export.
 
 ## Offene Punkte
 
-### 1. Offene Annahmen aus `fetch_invoices`-Implementierung klären
+### 1. Engine-Feintuning anhand Q1 2026 Mismatches (8 Belege / 26 Mismatches)
+
+- Auffälliges Muster: Engine sagt 0% VAT bei Belegen mit JTL=21% (CZ) / 22% (IT) — typischer DE→IT-Fall, der fälschlich als MARKETPLACE_FACILITATOR oder THIRD_COUNTRY klassifiziert wird.
+- CSV mit allen 26 Mismatches: `/tmp/q1-mismatches.csv` (vom letzten Reconcile-Run).
+- Plan: Engine-Logik prüfen (insbesondere die UK/CH-Marketplace-Facilitator-Regel — die könnte zu breit greifen), Tests ergänzen.
+
+### 2. Offene Annahmen aus `fetch_invoices`-Implementierung klären
 
 - ~~`nTyp` 0/1~~: **bestätigt 2026-05-05** via `vRechnungLieferadresse`/`vRechnungRechnungsadresse`. `0` = Liefer, `1` = Rechnung.
 - ~~Gutschriften eigener Rechnungen~~: **implementiert 2026-05-05** als `_fetch_credit_notes()`, dritte Quelle. Q1 2026: 245 Belege.

@@ -2,6 +2,20 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-05 — Reconcile-Pipeline + erster Engine-Test gegen Q1 2026
+
+- Neuer `core/pipeline.py` mit `ReconcileReport` (Counters: Treatments, Mismatches by severity/source/warehouse) und streaming `run_reconcile()`.
+- Neuer CLI-Command `jtl2datev reconcile --from --to [--out-mismatches CSV]`.
+- `Settings.own_vat_countries: frozenset[str]` (Default DE/FR/IT/ES/PL/CZ/GB; via ENV `OWN_VAT_COUNTRIES=DE,FR,…` übersteuerbar).
+- 9 Pipeline-Tests, 20 Unit-Tests grün, ruff/mypy clean.
+- **Q1 2026 Ergebnis (13 619 Belege, 17 120 Positionen):**
+  - Treatments: DOMESTIC 59,5% / OSS_B2C 35,0% / IGL_B2B 3,3% / THIRD_COUNTRY 2,2%
+  - **Engine-Übereinstimmung mit JTL: 99,94%** — nur 8 Belege / 26 Mismatches
+  - Mismatches Top-Lager: CZ 8, IT 6, DE 6, FR 4, ES 2
+  - Quellen: 20× extern, 6× eigen
+  - Auffälliges Muster: Engine sagt 0% VAT bei Belegen, wo JTL 21%/22% gespeichert hat — typische Marketplace-Facilitator-Fehlentscheidung der Engine (zB DE-Lager → IT-Kunde wird fälschlich als facilitator klassifiziert). Verfeinerung der Engine-Regeln in nächster Phase.
+- CSV-Export aller Mismatches via `--out-mismatches`.
+
 ## 2026-05-05 — Gutschriften-Quelle (`dbo.tgutschrift`) integriert
 
 - **`_fetch_credit_notes()`** dritte Quelle in `JtlInvoiceRepository`. Liest `dbo.tgutschrift` + `dbo.tGutschriftPos`, JOIN auf `Rechnung.tRechnung` (Lagerland + externe Auftragsnr) + `tRechnungAdresse` (nTyp=0/1) + `dbo.tPlattform`. Filter: `nStorno=0`, `kRechnung IS NOT NULL`, Datum-Floor 2024-11-01.

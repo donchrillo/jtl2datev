@@ -1,5 +1,7 @@
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_OWN_VAT_COUNTRIES: frozenset[str] = frozenset({"DE", "FR", "IT", "ES", "PL", "CZ", "GB"})
 
 
 class Settings(BaseSettings):
@@ -13,6 +15,17 @@ class Settings(BaseSettings):
 
     datev_mandantennr: int | None = None
     datev_beraternr: int | None = None
+
+    own_vat_countries: frozenset[str] = _DEFAULT_OWN_VAT_COUNTRIES
+
+    @field_validator("own_vat_countries", mode="before")
+    @classmethod
+    def parse_own_vat_countries(cls, v: object) -> frozenset[str]:
+        if isinstance(v, str):
+            return frozenset(c.strip().upper() for c in v.split(",") if c.strip())
+        if isinstance(v, (list, tuple, set, frozenset)):
+            return frozenset(str(c).strip().upper() for c in v)
+        return _DEFAULT_OWN_VAT_COUNTRIES
 
     @property
     def sqlalchemy_url(self) -> str:
