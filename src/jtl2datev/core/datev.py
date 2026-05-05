@@ -190,26 +190,29 @@ class ExportReport:
 
 
 def load_compare_map(path: Path) -> dict[str, set[tuple[str, str]]]:
-    """Read an existing DATEV CSV and index it by Belegfeld 1 (external order ID).
+    """Read an existing DATEV CSV and index it by invoice number.
 
-    Returns: order_id → set of (Konto, BU-Schlüssel) that the reference file
-    booked for that order. Used to mark engine bookings that diverge from a
-    known-good reference (e.g. the previous-tool's export) — the divergent
-    rows get an "X" in Belegfeld 2 so the operator can filter and review.
+    The match key is the first whitespace-separated token of the Buchungstext,
+    which is the invoice / Belegnummer (e.g. "R-DE-249030238-2026-322" out of
+    "R-DE-249030238-2026-322 Kruse Cora"). Belegfeld 1 is *not* used as the
+    key because its meaning has shifted over time (customer number until end
+    of 2025, external order ID since January 2026; manual edits afterwards).
+
+    Returns: invoice_no → set of (Konto, BU-Schlüssel) used in the reference.
     """
     out: dict[str, set[tuple[str, str]]] = {}
     with path.open(encoding="cp1252", newline="") as fh:
         rows = list(csv.reader(fh, delimiter=";"))
-    # Skip EXTF header (row 0) + column header (row 1)
     for r in rows[2:]:
-        if len(r) < 11:
+        if len(r) < 14:
             continue
-        konto = r[7]      # Gegenkonto
-        bu = r[8]         # BU-Schlüssel
-        order_id = r[10]  # Belegfeld 1
-        if not order_id:
+        konto = r[7]
+        bu = r[8]
+        buchungstext = r[13]
+        invoice_no = buchungstext.split(" ", 1)[0].strip() if buchungstext else ""
+        if not invoice_no:
             continue
-        out.setdefault(order_id, set()).add((konto, bu))
+        out.setdefault(invoice_no, set()).add((konto, bu))
     return out
 
 
@@ -450,9 +453,13 @@ def write_extf_buchungsstapel(
                     customer_name=customer_name,
                 )
                 if compare_map is not None:
-                    order_id = invoice.jtl_external_order_no or ""
-                    ref = compare_map.get(order_id)
-                    if ref is None or (acct_no, bu_key) not in ref:
+                    # Match by invoice number — stable across the 2026 Belegfeld-1
+                    # convention change. Only mark when the invoice IS in the
+                    # reference but the (Konto, BU) differs; invoices missing
+                    # from the reference are out-of-period or post-cutoff and
+                    # not actionable diffs.
+                    ref = compare_map.get(invoice.invoice_no)
+                    if ref is not None and (acct_no, bu_key) not in ref:
                         row[_IDX_BELEGFELD2] = "X"
                         report.diff_marked += 1
                 writer.writerow(row)
