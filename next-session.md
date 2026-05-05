@@ -26,18 +26,14 @@ Aktuell: Format-Plausibilitätscheck (`looks_like_valid_vat_id`). Echte VIES-API
 - ~~Gutschriften eigener Rechnungen~~: **implementiert 2026-05-05** als `_fetch_credit_notes()`, dritte Quelle. Q1 2026: 245 Belege.
 - **VAT-Berechnung `tExternerBelegPosition`**: Menge >1 → `vat_amount = brutto - netto` je Position (Annäherung; exakter wäre `Anzahl × (Brutto-Unit − Netto-Unit)`, in Amazon-Praxis typischerweise Gesamtpreise je Zeile).
 
-### 2. DATEV-Format-Spezifikation — siehe `docs/datev-format.md`
+### 2. DATEV-Format-Spezifikation — vollständig dokumentiert in `docs/datev-format.md`
 
-Reverse-Engineered aus dem Jera-Beispielexport für März 2026
-(`samples/jera/EXTF_Buchungsstapel_Belege_202603_*.csv`, 4 807 Buchungen).
-Format = EXTF v700 / Format-Version 12, Mandant 14974, Berater 10305, SKR04
-mit 7-stelligen Sachkonten. Encoding Windows-1252.
+Sachkonten-Mapping vollständig aus `samples/jera/SachkontenZuordnung.csv`,
+Debitor-Mapping aus Screenshot. Bereit für Implementation `rules.py` + `datev.py`.
 
-Offene Klärungen für User:
-- Sachkonten 4121000, 4328000, 4126000, 4325000, 4970000 — exakte Bedeutung
-- CZ + GB DOMESTIC-Konten (kein Sample im März)
-- Differenz Debitoren 10006000 vs 10008000
-- Liste aller eigenen Lager-UStIDs
+Offene Detail-Klärungen (klein):
+- GB-eigene UStID
+- Belegfeld 2 — Inhalt klären
 
 ### 3. Steuer-/Länder-Regeln verfeinern (`docs/tax-rules.md`)
 

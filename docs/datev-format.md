@@ -74,56 +74,106 @@ Wir füllen primär:
 
 Alle übrigen Spalten leer lassen.
 
-## Debitor-Sammelkonten (8-stellig)
+## Debitor-Sammelkonten (8-stellig) — gemappt nach **Zahlungsart** (`cZahlungsart`)
 
-| Konto | Plattform / Quelle | Sample-Volumen 03/2026 |
+Quelle: JTL Personenkonten-Konfiguration (Screenshot `samples/jera/Screenshot 2026-05-05 151112.png`). Default-Konto: **10000000**.
+
+| Konto | Zahlungsart-Werte | Bemerkung |
 |---|---|---|
-| **10005000** | Amazon (alle Marktplätze, alle Lager) | 4 056 |
-| **10011000** | Otto (`R-DE-…` / `E-DE-…`) | 299 |
-| **10006000** | eigene Wawi (eBay/Kaufland) | 188 |
-| **10008000** | eigene Wawi (eBay/Kaufland) | 116 |
-| 10000000 | Amazon-VCS-Sonderfälle (`INV-XX-…`) | 11 |
-| 10004000 / 10002000 | vereinzelt (eigene Wawi) | 4 |
+| **10001000** | Bar, Bar bei Selbstabholung | Kasse |
+| **10002000** | Überweisung, Vorkasse, vorkasse, Rechnung manuell | Vorkasse |
+| **10004000** | PayPal, paypal, PayPal-Express | PayPal |
+| **10005000** | AmazonPayments, amazon_payments, Amazon Payments | Amazon |
+| **10006000** | eBay Rechnungskauf, eBay Managed Payments | eBay |
+| **10007000** | Gewährleistung | (selten) |
+| **10008000** | REAL, Kaufland, Kaufland.de | Kaufland (nicht eBay!) |
+| **10009000** | rechnung_mit_klarna, Sofortbezahlen Klarna | Klarna |
+| **10010000** | shopify_payments | Shopify |
+| **10011000** | Otto | Otto |
+| **10012000** | TEMU | (außerhalb Tool-Scope) |
+| **10000000** | (Default-Fallback) | unbekannt / nicht gemappt |
 
-> **Offene Frage:** Was unterscheidet `10006000` vs `10008000` (beide eigene-Wawi)? Vermutlich eBay vs. Kaufland — vom User bestätigen.
+**Implementierung:** Mapping fest verdrahten (oder als Settings-Override). Lookup über `cZahlungsart` mit case-insensitive Match.
 
 ## Erlöskonten (Gegenkonto, 7-stellig — SKR04)
 
-### Tabelle Engine-Treatment → Konto
+Quelle: `samples/jera/SachkontenZuordnung.csv` (78 Mapping-Einträge, vollständig).
 
-| Treatment | Lagerland | Bestimmungsland | Konto | BU | Anmerkung |
-|---|---|---|---|---|---|
-| DOMESTIC | DE | DE | **4400000** | – | Erlöse 19% Inland |
-| DOMESTIC | FR | FR | **4324000** | – | FR-lokal 20% (lokaler Steuerberater) |
-| DOMESTIC | IT | IT | **4326000** | – | IT-lokal 22% |
-| DOMESTIC | ES | ES | **4323000** | – | ES-lokal 21% |
-| DOMESTIC | PL | PL | **4327000** | – | PL-lokal 23% |
-| DOMESTIC | CZ | CZ | (TBD, kein Sample im März) | – | CZ-lokal 21% — vermutlich `4328000` oder eigenes Konto |
-| DOMESTIC | GB | GB | (TBD) | – | UK-lokal 20% |
-| DOMESTIC | beliebig + UStID + 0% (national reverse charge) | gleiches Land | **4126000** | – | B2B-Inland 0% — Sample mit Kunden-UStID `IT05041920967` etc. |
-| OSS_B2C (DE-Lager) | DE | EU-Ausland | **4320000** | **240** | EU-Ursprung leer (DE Stammland) |
-| OSS_B2C (anderes EU-Lager) | FR/IT/ES/PL/CZ/… | EU-Ausland | **4320000** | **241** | EU-Ursprung mit unserer lokalen UStID (z.B. `FR54820509628`) |
-| IGL_B2B (cross-border B2B Reverse-Charge) | beliebig | EU mit Kunden-UStID | **4001000** | **285** | EU-Bestimmung mit Kunden-UStID |
-| THIRD_COUNTRY | beliebig | außerhalb EU/UK/CH | **4121000** ?? | – | Sample-Belegen mit `…NL56FD`-Suffix |
-| EXPORT_LOCAL_VAT (Amazon UK/CH ohne MF, gross≠net) | beliebig | GB/CH | **4325000** | – | nur 1 Sample (`DE6002P4NL56FU`) — bestätigt unseren Edge-Case |
-| MARKETPLACE_FACILITATOR | beliebig | GB/CH (Amazon zieht ein) | (TBD — kein Sample im März; vermutlich `4328000`) | – | Sample-Belegen mit `…NL56FD`-Suffix, oft engl. Namen → vermutlich UK |
+Schlüssel-Dimensionen: `Lager-ISO × Bestimmungs-ISO × UStID-vorhanden × Plattform`.
+Sonder-Country-Codes: `DE` (DE-Lager), `EU` (jedes Nicht-DE EU-Lagerland),
+`HLG` (Helgoland), `MC` (Monaco — wie FR), `XI` (Nordirland — wie EU),
+`Drittl.` (alle Drittländer).
 
-### Offene Konten-Fragen an User
+### Konten-Übersicht (vollständig)
 
-1. **`4126000`** — was genau? Domestic-B2B 0% (national reverse charge)? Oder etwas anderes?
-2. **`4121000`** — alle Amazon-VCS-Belege ohne EU-Bestimmung, ohne Satz. Drittland §4 Nr.1a? Oder Marketplace-Facilitator?
-3. **`4328000`** — ausschließlich `…FD`-Suffix (Suffix-Code für UK?). Drittland UK Marketplace-Facilitator?
-4. **`4325000`** — 1 Beleg `DE6002P4NL56FU` (`…FU`-Suffix) → entspricht unserem `EXPORT_LOCAL_VAT`. UK-VAT-pflichtig?
-5. **`4327000`** — 10 Belege mit `INV-PL-…`-Format und EU-Bestimmung=PL/23% → PL-Lokal-Konto, korrekt?
-6. **CZ-Lager-Lokal**: welches Konto? (kein Sample im März, vermutlich `4328000`?)
-7. **GB-Lager-Lokal**: welches Konto? (Lager DE→Kunde DE auf 4400000; aber UK-Lager → UK-Kunde?)
+| Konto | Bemerkung | Lager → Ziel | USt | BU |
+|---|---|---|---|---|
+| **4400000** | volle USt Inland | DE → DE | 19% | – |
+| **4324000** | FR-lokal | FR → FR / FR → MC | 20% | – |
+| **4326000** | IT-lokal | IT → IT | 22% | – |
+| **4323000** | ES-lokal (B2C, UStID=nein) | ES → ES | 21% | – |
+| **4327000** | PL-lokal | PL → PL | 23% | – |
+| **4322000** | CZ-lokal | CZ → CZ | 21% | – |
+| **4325000** | UK 20% (DE-Reg) | EU → GB / GB → EU | 20% | – |
+| **4328000** | "**VAT durch Amazon**" — Marketplace-Facilitator | EU/GB → GB | 0% | – |
+| **4001000** | EU → DE B2B (Reverse-Charge, wir sind Käufer) | EU → DE | 19% | **285** |
+| **4125000** | IGL aus DE-Lager (mit Kunden-UStID) | DE → EU mit UStID | 0% | – |
+| **4126000** | IGL aus EU-Lager (zwischen Mitgliedstaaten) | EU → EU oder EU → DE mit UStID | 0% | – |
+| **4120000** | DE/EU → Helgoland steuerfrei + DE → Drittland | DE/EU → HLG / DE → Drittl. | 0% | – |
+| **4121000** | EU/GB → Drittland steuerfrei | EU → Drittl. / GB → EU/Drittl. | 0% | – |
+| **4320000 BU 240** | OSS B2C aus DE-Lager | DE → EU-AT/BE/BG/CY/CZ/DK/EE/ES/FI/FR/GR/HR/HU/IE/IT/LT/LU/LV/MT/NL/PL/PT/RO/SE/SI/SK/XI | je Zielland | **240** |
+| **4320000 BU 241** | OSS B2C aus Nicht-DE EU-Lager | EU → AT/BE/BG/CY/CZ/DK/EE/ES/FI/FR/GR/HR/HU/IE/IT/LT/LU/LV/MT/NL/PL/PT/RO/SE/SI/SK/XI/MC | je Zielland | **241** |
+| **4970000** | "DPD Schaden" Sonderfall | DE → DE | 0% | – |
 
-### BU-Schlüssel-Differenzierung
+### Lookup-Algorithmus für `rules.py`
 
-- **BU leer** + Konto 4400000/4324000/4326000/… → Konto kodiert den Steuersatz, kein BU nötig
-- **BU 240** + 4320000 → OSS B2C, Lager **DE** (Stammland, EU-Ursprung leer)
-- **BU 241** + 4320000 → OSS B2C, Lager **anderes EU** (FR/IT/CZ/PL/ES — EU-Ursprung mit unserer lokalen UStID gefüllt)
-- **BU 285** + 4001000 → i.g. Lieferung Reverse-Charge B2B
+```
+Inputs: warehouse_country, dest_country, treatment, has_vat_id, line_vat_rate
+
+1. Normalisiere dest: MC → für FR-Lager: bleibt MC; für DE-Lager: wie EU.
+2. Drittland-Sonderfall: dest == HLG → 4120000.
+3. dest == "Drittl." (außerhalb EU+GB+CH):
+   - wh == DE → 4120000
+   - wh in EU → 4121000
+   - wh == GB → 4121000
+4. dest == GB:
+   - wh in EU oder GB:
+     - line_vat_rate == 0 → 4328000 (MARKETPLACE_FACILITATOR)
+     - sonst → 4325000 (EXPORT_LOCAL_VAT)
+5. wh == dest (DOMESTIC):
+   - DE → 4400000
+   - FR → 4324000
+   - IT → 4326000
+   - ES → 4323000 (B2C; falls UStID + 0% → 4126000)
+   - PL → 4327000
+   - CZ → 4322000
+   - GB → 4325000
+6. Cross-border EU + has_vat_id (B2B Reverse-Charge):
+   - wh == DE, dest in EU → 4125000
+   - wh in EU, dest in EU oder DE → 4126000
+   - wh in EU, dest == DE (wir sind Käufer) → 4001000 + BU 285 (Sonderfall — nur wenn JTL es so klassifiziert)
+7. Cross-border EU + B2C (OSS):
+   - wh == DE → 4320000 + BU 240
+   - wh in EU (Nicht-DE) → 4320000 + BU 241
+8. Sonderfall "DPD Schaden": JTL flagged 4970000 — wir nutzen das nicht aktiv, aber loggen wenn Engine 4970000 produziert.
+```
+
+### Engine-Treatment ↔ Sachkonto-Mapping
+
+| Engine-Treatment | typisches Konto |
+|---|---|
+| `DOMESTIC` (Lager == Ziel, vat>0) | 4400000 (DE) / 4324000 (FR) / 4326000 (IT) / 4323000 (ES) / 4327000 (PL) / 4322000 (CZ) / 4325000 (GB) |
+| `DOMESTIC` (Lager == Ziel, vat=0, UStID) | 4126000 (EU) |
+| `OSS_B2C` aus DE-Lager | 4320000 + BU **240** |
+| `OSS_B2C` aus Nicht-DE EU-Lager | 4320000 + BU **241** |
+| `IGL_B2B` (DE-Lager, Kunden-UStID) | 4125000 |
+| `IGL_B2B` (Nicht-DE EU-Lager, Kunden-UStID) | 4126000 |
+| `IGL_B2B` (Wir kaufen B2B aus EU nach DE) | 4001000 + BU **285** |
+| `THIRD_COUNTRY` (DE-Lager) | 4120000 |
+| `THIRD_COUNTRY` (EU/GB-Lager) | 4121000 |
+| `MARKETPLACE_FACILITATOR` (Amazon UK, gross==net) | **4328000** |
+| `EXPORT_LOCAL_VAT` (UK, gross≠net) | **4325000** |
+| Sonderfall DPD Schaden | 4970000 (manuell, nicht von Engine) |
 
 ## Sonderfälle
 
@@ -188,9 +238,10 @@ Spalte 6 ist `YYYYMMDDhhmmssfff`. Excel rundet auf wissenschaftliche Notation (`
 
 ## Offene Punkte vor finaler Implementation
 
-- [ ] User bestätigt Sachkonten-Mapping (insbesondere 4121000, 4328000, 4126000, 4325000, 4970000)
-- [ ] CZ + GB DOMESTIC-Konten klären
-- [ ] Differenz `10006000` vs `10008000` Debitoren
-- [ ] DE-eigene UStID + alle Lager-UStIDs (DE319514546 ist die unsere — bestätigen)
-- [ ] Belegfeld 2 — wann gefüllt, womit?
-- [ ] Gutschriften: ist Bezugsbelegnummer in einem speziellen Feld zu setzen (DATEV Spalte „Beleg-Link")?
+- [x] ~~Sachkonten-Mapping bestätigt~~ (vollständig in `samples/jera/SachkontenZuordnung.csv` dokumentiert)
+- [x] ~~Debitor-Mapping~~ (Screenshot zeigt: Mapping nach `cZahlungsart`)
+- [ ] **Lager-UStIDs vollständig** (aus den Sample-Belegen: `FR54820509628`, `IT00185379997`, `CZ683736606`, `PL5263144779`, `ESN2765131D`; DE-UStID erschien als `DE319514546`; **GB-UStID fehlt noch**)
+- [ ] **Belegfeld 2** — wann gefüllt, womit? In Sample meist leer; bei Amazon manchmal 8-stellige Zahl (`11212135` etc.) — vermutlich JTL-interner Auftrags-Key. Prüfen.
+- [ ] **`4970000` "DPD Schaden"** — wann triggert das in Praxis? Unsere Fehler-Gutschrift `202650012449` würde Engine als error flaggen, nicht in Export schreiben. Ok für jetzt.
+- [ ] **Header-Zeitstempel-Format** im File-Sample steht `2,02604E+16` — Jera schreibt also nicht-quoted und Excel verstümmelt's bei Anzeige. Beim Schreiben als 17-stelliger Integer-String exportieren (`YYYYMMDDhhmmssfff`).
+- [ ] **DutyPay-Format** (`samples/jera/DutyPay-Sale-2026-MAR.csv`) — separates OSS-Format, später angehen.

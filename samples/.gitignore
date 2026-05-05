@@ -1,0 +1,4 @@
+# Mandantendaten / sensible Beispielexporte — niemals committen.
+*
+!.gitignore
+!README.md
