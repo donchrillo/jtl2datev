@@ -68,6 +68,7 @@ class TaxDecision(BaseModel):
     treatment: TaxTreatment
     expected_vat_rate: Decimal
     tax_country: str
+    cleaned_vat_id: str | None = None  # normalised UStId for DATEV (prefix added if needed)
     notes: tuple[str, ...] = ()
 
 

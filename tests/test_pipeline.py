@@ -83,7 +83,12 @@ def test_third_country_with_nonzero_vat_produces_mismatch() -> None:
 def test_multiple_invoices_aggregate_correctly() -> None:
     invoices = [
         _invoice("R-001", "DE", "DE"),  # domestic, no mismatch
-        _invoice("R-002", "DE", "FR"),  # OSS B2C, no mismatch (same vat_rate retained)
+        _invoice(  # OSS B2C with FR standard rate → no mismatch
+            "R-002",
+            "DE",
+            "FR",
+            lines=(_line(1, vat_rate=Decimal("20.00"), vat_amount=Decimal("20.00")),),
+        ),
         _invoice(  # DE→US with wrong VAT → mismatch
             "R-003",
             "DE",
