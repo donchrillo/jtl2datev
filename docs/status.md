@@ -2,6 +2,22 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-05 — DATEV-Export-Sprint: Jera-Konventionen, Audit-Modus, 4-Monatsabgleich
+
+**Vergleich Engine vs. Jera März 2026:**
+- 4807 Belege Jera, 4807 Belege Engine — 0 Konto/BU-Differenzen (außer 4 ERROR/UNKNOWN-Marker).
+- **April 2026 (Jera EOL):** 5068 Buchungen Engine, 0 Marker, 112 Audit-Tag-Cluster erfasst.
+
+**Sprint-Highlights:**
+- **Jera-Konvention für IGL/THIRD-COUNTRY:** alle IGL_B2B → 4126000 (DE-Lager: 4125000 obsolet), alle THIRD_COUNTRY → 4121000 (einheitlich).
+- **Bundle-Self-Reference-Bug gefixt:** Master-Position self-referenziert via `kStuecklisteRechnungPos = kRechnungPosition`; `IS NULL`-Filter korrigiert.
+- **Storno-Filter entfernt:** `nIstStorniert=1` bleibt drin (Audit-Trail-Vollständigkeit); Storno-Gutschrift als eigene `nBelegtyp=1`-Zeile.
+- **Temu-Filter:** Belege mit `cExterneAuftragsnummer LIKE 'PO%'` ausgeschlossen (Test-Rollback 2025).
+- **VCS-IDU-Belege drin:** Amazon Italien Erstattungen ohne Rechnung (JTL-Manuel-Einträge); Jera-Inkonsistenz dokumentiert.
+- **CLI-Flags für Validierung:** `--compare-to <ref.csv>` (X-Marker bei Abweichung), `--audit` (Regel-Tags in Beleglink-Spalte).
+- **Kundenname in Buchungstext:** PartyAddress + `display_name()` nach Jera-Konvention (Surname-First).
+- **87 Tests grün**, ruff clean. 4 Monatsexporte Jan-Apr 2026 in `exports/`.
+
 ## 2026-05-05 — DATEV-EXTF-Export funktionsfähig
 
 - `core/rules.py` mit Konten-Lookup-Algorithmus aus `docs/datev-format.md`

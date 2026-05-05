@@ -20,15 +20,15 @@
 
 | Modul | Status | Verantwortung |
 |---|---|---|
-| `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings |
-| `core/models.py` | ✓ | RawInvoice, RawInvoiceLine, PartyAddress, TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
+| `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids |
+| `core/models.py` | ✓ | RawInvoice, RawInvoiceLine, PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
 | `core/repositories.py` | ✓ | Abstrakte Interfaces: InvoiceRepository |
-| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. `fetch_invoices()` mit `_fetch_own()` + `_fetch_external()` (Streaming-Cursor, 2026-05-05) |
-| `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten (Versandland, Lieferland, Rechnungsland, USt-IdNr., Plattform, Sätze) → TaxTreatment-Entscheidung (Inland / OSS B2C / IGL B2B / Drittland / Marketplace-Facilitator UK/CH) |
-| `core/rules.py` | ⧖ | Konten-Mapping (Steuerentscheidung × Lagerland × Plattform → DATEV-Sachkonto + USt-Schlüssel). Stub. |
-| `core/reconcile.py` | ✓ | Plausi-Check: Vergleich JTL-gespeichert vs. eigene Engine — ReconcileMismatch-Report bei Abweichungen |
-| `core/datev.py` | ⧖ | DATEV-CSV-Erzeugung (EXTF Buchungsstapel). Stub. |
-| `cli.py` | ✓ | Click-Wrapper, `export --from --to --out`. Error-Handling für NotImplementedError + DB-Fehler. |
+| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. `fetch_invoices()` mit `_fetch_own()` + `_fetch_external()` + `_fetch_credit_notes()` (Streaming-Cursor). Bundle-Self-Ref-Filter, Storno-Vollständigkeit, Temu-Filter (`PO%`), VCS-IDU-Belege berücksichtigt. |
+| `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten → TaxTreatment (DOMESTIC / OSS_B2C / IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR). VAT-ID-Format-Plausibilität, GB-Sonderfall. |
+| `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
+| `core/reconcile.py` | ✓ | Plausi-Check: JTL-gespeichert vs. Engine. ReconcileMismatch-Report mit Severity (error/warning/info). Mismatch-CSV-Export. |
+| `core/datev.py` | ✓ | DATEV-EXTF-CSV-Erzeugung (v7.0, Format 12). Windows-1252, CRLF. Beide Flags `--compare-to` und `--audit` implementiert. |
+| `cli.py` | ✓ | Click-Wrapper, `export --from --to --out [--compare-to] [--audit]`. Error-Handling für DB/Validation. |
 
 Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 

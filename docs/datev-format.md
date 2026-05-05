@@ -236,7 +236,47 @@ Spalte 6 ist `YYYYMMDDhhmmssfff`. Excel rundet auf wissenschaftliche Notation (`
 2. **`rules.py`** mit Mapping-Tabelle Treatment+Lagerland → (Konto, BU)
 3. **`datev.py`**: EXTF-CSV-Writer mit Header + Datenzeilen, Windows-1252-Encoding.
 
+## CLI-Flags für Validierung
+
+### `--compare-to <jera.csv>`
+
+Lädt Referenz-Export, indiziert nach Belegnummer (erstes Whitespace-separated Token in Buchungstext). 
+Buchungen mit (Konto, BU)-Abweichung bekommen "X" in Belegfeld 2. 
+Belege außerhalb der Referenz-Periode werden nicht markiert. 
+**Default:** deaktiviert.
+
+### `--audit`
+
+Schreibt Engine-Regel-Tag (z.B. `OSS241-CZ-AT`, `IGL-DE-FR`, `MF-GB-FR`, `DOM-DE-19`, `DOM-RC-IT`, `THIRD-EU-DE-CH`, `EXP-GB-ES`, `ERROR`, `UNKNOWN`) in Spalte 20 „Beleglink". 
+Vor Übergabe an Steuerberater entfernen. 
+**Default:** deaktiviert.
+
+**Tag-Schema:**
+- `DOM-{wh}-{rate}` – Domestic (z.B. `DOM-DE-19`, `DOM-IT-22`)
+- `DOM-RC-{wh}` – Domestic Reverse-Charge (vat=0 + vat_id)
+- `OSS240-DE-{dest}` – OSS aus DE-Lager
+- `OSS241-{wh}-{dest}` – OSS aus EU-Lager (≠ DE)
+- `OSS285-{wh}-DE` – OSS EU-Lager → DE
+- `IGL-{wh}-{dest}` – IGL B2B
+- `MF-GB-{wh}` – Marketplace-Facilitator UK (Amazon)
+- `EXP-GB-{wh}` – UK mit lokaler VAT-Pflicht (nicht MF)
+- `THIRD-EU-{wh}-{dest}` – Drittland aus EU-Lager
+- `THIRD-DE-{dest}` – Drittland aus DE-Lager
+- `ERROR` / `UNKNOWN` – Marker für skippte Belege (kein Treatment, Fehler in Rohfakten)
+
 ## Sondervorgänge
+
+### Bundle-Master Self-Reference
+
+`kStuecklisteRechnungPos = kRechnungPosition` markiert die Master-Position (nicht `NULL`).
+SQL-Filter berücksichtigt dies und schließt Master-Positionen von Gesamtverarbeitung aus
+(werden nur als Platzhalter gezählt; Positionen selbst kommen via `kStuecklisteRechnungPos`-Join).
+
+### Stornierte Belege bleiben drin
+
+`nIstStorniert=1` → Beleg wird NICHT ausgefiltert. Stornierung erfolgt durch eine separate
+Storno-Gutschrift-Zeile (`nBelegtyp=1`), die den Original-Beleg gegenbucht. Dies sichert
+vollständige Audit-Trail für Steuerberater.
 
 ### Temu (`cExterneAuftragsnummer LIKE 'PO%'`) — ausgeschlossen
 

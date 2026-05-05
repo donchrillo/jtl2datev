@@ -2,67 +2,27 @@
 
 ## Status
 
-Datenleseschicht + Steuer-Engine + Reconcile + **DATEV-Export** stehen
-(73 Tests grün, ruff clean). Smoke gegen Jera-Sample März 2026:
-4823 Buchungen vs. 4807 (Δ +16). Konten-Verteilung sehr nah am Original
-(größte Abweichung 4001000 ist nun Δ +28 — vorher +995, Fix war
-EU→DE-OSS-Sonderfall).
-
-## Strategischer Hinweis: Jera-Phase-out
-
-Jera-Schnittstelle ist nach JTL-Software-Update kaputt (Lizenzen ausgelaufen,
-keine Updates mehr). Ab April 2026 ist `jtl2datev` die einzige Quelle für
-DATEV-Exporte. Vergleichsbasis fehlt — alle Engine-Anpassungen müssen
-eigenständig validierbar sein. März 2026 ist der letzte Monat mit
-vollständigem Jera-Referenz-Export.
+**DATEV-Export-Pipeline produktionsreif** für DE-Steuerberater.
+- 87 Tests grün, ruff clean.
+- 4 Monatsexporte (Jan-Apr 2026) konsistent vs. Jera (wo verfügbar).
+- Engine ab April einzige Quelle (Jera EOL nach Software-Update).
+- Konten-Mapping nach Jera-Konvention vollständig validiert.
+- Audit-Modus (`--audit` Flag) für interne Tax-Rule-Tracing implementiert.
+- Compare-Modus (`--compare-to` Flag) für Q1-Reconciliation gegen Referenz aktiv.
 
 ## Offene Punkte
 
-### 1. Kundenname / Adressdaten in `RawInvoice`
+1. **Steuerberater-Klärung (User):** Beleginfo-Felder (aktuell Spalten 13-17 als Art/Inhalt 1-5). Prüfen ob auf Zusatzinformation-Spalten umsteigen soll (Jera nutzte andere Feldnamen).
 
-`PartyAddress` hat aktuell nur `country_iso`, `region`, `vat_id`. Für DATEV
-sollten Vorname + Nachname rein, damit Buchungstext und Beleginfo „Kundenname"
-gefüllt werden können. Anpassen:
-- `models.py`: `PartyAddress.first_name: str | None`, `last_name: str | None`, `company: str | None`
-- `db_jtl.py`: `cVorname`, `cName`, `cFirma` in den 3 SQL-Queries mitlesen + mappen
-- `datev.py`: Buchungstext-Format `f"{invoice.invoice_no} {bill_to.first_name or ''} {bill_to.last_name or ''}"`
+2. **DutyPay-Export:** Separates Output-Format für OSS-Report. Sample `samples/jera/DutyPay-Sale-2026-MAR.csv` analysieren, `core/dutypay.py` implementieren.
 
-### 2. GB-Lager-Edge-Cases (Engine)
+3. **TaxOily-Berichte je Lagerland:** Dritter Output-Pfad für lokale Steuerberater (FR/IT/ES/PL/CZ/GB). Routing per `--output-format` Flag.
 
-Engine markiert `wh=GB, dest=EU` als UNKNOWN, weil `GB` nicht in `EU_COUNTRIES`.
-Jera bucht solche Fälle korrekt auf 4121000 (UK-Re-Export = Drittlandsausfuhr).
-~67 Belege im März 2026 betroffen. Fix:
-- Engine: GB-Lager-Sonderfall → wenn `wh=="GB"` und `dest != "GB"` → THIRD_COUNTRY-äquivalent
-- `rules.py` für THIRD_COUNTRY+wh=GB → 4121000 (passt schon)
+4. **Probebuchungen filtern (optional):** Belege mit Umsatz 0,00 € raus (z.B. SR202602155/156). Risk: Audit-Trail-Vollständigkeit vs. Noise-Reduktion.
 
-### 3. DutyPay-Export
+5. **VIES-Online-Validierung (langfristig):** Aktuell Format-Plausibilität. Echte VIES-API mit Cache für 100% B2B-Sicherheit.
 
-Separater Output für OSS-Bericht (DutyPay-Tool). Format-Sample liegt unter
-`samples/jera/DutyPay-Sale-2026-MAR.csv`. Kommt in `core/dutypay.py` als
-zweiter Writer; gleiche `RawInvoice`-Modelle, anderes Output-Format.
-
-### 4. Marketplace-Facilitator Reconcile-Severity
-
-`reconcile.py` sollte für `treatment == MARKETPLACE_FACILITATOR` Mismatches
-mit severity `info` produzieren (kein Konflikt — Amazon kassiert UK-VAT selbst,
-JTL speichert Roh-Wert).
-
-### 5. VIES-Online-Validierung (langfristig)
-
-Aktuell: Format-Plausibilitätscheck (`looks_like_valid_vat_id`).
-Echte VIES-API-Anbindung mit Cache für definitive B2B-Klassifikation.
-
-### 6. Restliche DB-Klärungen
-
-- `nSteuereinstellung`-Werte 0/10/15/20: Bedeutung
-- `Rechnung.tRechnungKorrektur` — Spalten + Verknüpfung (für is_credit_note bei eigenen Belegen)
-- `Rechnung.tRechnungStorno` — Auswirkung auf Buchung
-- VAT-Berechnung `tExternerBelegPosition` mit Menge >1 (aktuell Annäherung)
-
-### 7. Steuer-/Länder-Regeln verfeinern (`docs/tax-rules.md`)
-
-- konkrete USt-Sätze + Sachkonten-Übersicht je Lagerland — größtenteils erledigt durch `rules.py`, aber Doku noch nicht synchronisiert
-- Belegfeld 2 — Inhalt klären (in Sample manchmal 8-stellige Zahl, vermutlich JTL-Auftrags-Key)
+6. **Restliche DB-Klärungen:** `nSteuereinstellung` (0/10/15/20-Bedeutung), `tRechnungKorrektur`-Vollständigkeit (own invoices credit note logic), `tRechnungStorno`-Auswirkung auf `nIstStorniert`, VAT-Berechnung `tExternerBelegPosition` bei Menge > 1.
 
 ## Notizen für Orchestrator
 
