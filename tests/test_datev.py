@@ -343,7 +343,9 @@ class TestSkipRules:
         )
         out.unlink()
 
-        assert report.bookings_written == 0
+        # Belege are now written as placeholder rows with empty Gegenkonto
+        # and "UNKNOWN" / "ERROR" in Belegfeld 2 — never silently dropped.
+        assert report.bookings_written == 1
         assert report.skipped_unknown == 1
 
     def test_error_mismatch_skipped(self) -> None:
@@ -380,8 +382,45 @@ class TestSkipRules:
         )
         out.unlink()
 
-        assert report.bookings_written == 0
+        assert report.bookings_written == 1
         assert report.skipped_error == 1
+
+    def test_error_placeholder_has_marker_and_empty_gegenkonto(self) -> None:
+        bad_line = RawInvoiceLine(
+            line_no=1, quantity=Decimal("1"),
+            net=Decimal("100"), gross=Decimal("119"),
+            vat_amount=Decimal("19"), vat_rate=Decimal("0"),
+        )
+        inv = _invoice("DE", "FR", vat_id="FR12345678901", lines=(bad_line,))
+
+        def forced(invoice: RawInvoice) -> list[LineDecision]:
+            d = TaxDecision(
+                treatment=TaxTreatment.IGL_B2B,
+                expected_vat_rate=Decimal("0"),
+                tax_country="DE",
+                cleaned_vat_id="FR12345678901",
+            )
+            return [LineDecision(line=bad_line, decision=d)]
+
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            out = Path(tmp.name)
+        try:
+            write_extf_buchungsstapel(
+                iter([inv]), out_path=out, settings=_settings(),
+                date_from=date(2026, 3, 1), date_to=date(2026, 3, 31),
+                decisions_by_invoice=forced,
+            )
+            with open(out, encoding="cp1252", newline="") as fh:
+                import csv as _csv
+                rows = list(_csv.reader(fh, delimiter=";"))
+        finally:
+            out.unlink()
+
+        assert len(rows) == 3  # EXTF header + column header + 1 booking
+        booking = rows[2]
+        assert booking[7] == ""   # Gegenkonto leer
+        assert booking[8] == ""   # BU leer
+        assert booking[11] == "ERROR"
 
 
 class TestPartyAddressDisplayName:

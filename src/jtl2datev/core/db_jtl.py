@@ -36,6 +36,7 @@ SELECT
     -- Totals
     eck.fVkBruttoGesamt       AS total_gross,
     eck.fVkNettoGesamt        AS total_net,
+    eck.cAuftragsnummern      AS jtl_internal_order_no,
     -- Platform name
     p.cName                   AS platform_name,
     -- Delivery address (nTyp=0)
@@ -163,6 +164,7 @@ SELECT
     r.cVersandlandISO          AS warehouse_country,
     r.cExterneAuftragsnummer   AS external_order_no,
     r.cZahlungsart             AS payment_method,
+    eck.cAuftragsnummern       AS jtl_internal_order_no,
     -- Platform name
     p.cName                    AS platform_name,
     -- Delivery address (nTyp=0) from tRechnungAdresse
@@ -189,6 +191,8 @@ SELECT
 FROM dbo.tgutschrift g
 LEFT JOIN Rechnung.tRechnung r
     ON r.kRechnung = g.kRechnung
+LEFT JOIN Rechnung.tRechnungEckdaten eck
+    ON eck.kRechnung = g.kRechnung
 LEFT JOIN dbo.tPlattform p
     ON p.nPlattform = g.kPlattform
 LEFT JOIN Rechnung.tRechnungAdresse ship
@@ -323,7 +327,14 @@ class JtlInvoiceRepository(InvoiceRepository):
                     is_credit_note=False,
                     lines=tuple(lines),
                     jtl_revenue_account=first["revenue_account"] or None,
-                    jtl_external_order_no=first["external_order_no"] or None,
+                    # Fallback: when no marketplace order ID exists (rare manual JTL
+                    # invoice), use the internal Wawi order number from
+                    # tRechnungEckdaten.cAuftragsnummern (a comma list — first entry).
+                    jtl_external_order_no=(
+                        first["external_order_no"]
+                        or (first["jtl_internal_order_no"] or "").split(",", 1)[0].strip()
+                        or None
+                    ),
                     payment_method=first["payment_method"] or None,
                 )
                 yielded += 1
@@ -528,7 +539,11 @@ class JtlInvoiceRepository(InvoiceRepository):
                     is_credit_note=True,
                     lines=tuple(lines),
                     jtl_revenue_account=first["revenue_account"] or None,
-                    jtl_external_order_no=first["external_order_no"] or None,
+                    jtl_external_order_no=(
+                        first["external_order_no"]
+                        or (first["jtl_internal_order_no"] or "").split(",", 1)[0].strip()
+                        or None
+                    ),
                     payment_method=first["payment_method"] or None,
                 )
                 yielded += 1

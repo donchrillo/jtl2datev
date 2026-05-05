@@ -282,7 +282,7 @@ def _build_row(
     gross_sum: Decimal,
     account: DatevAccount,
     debitor: str,
-    decision_for_eu_cols: LineDecision,
+    decision_for_eu_cols: LineDecision | None,
     settings: Settings,
     buchungstext: str,
     customer_name: str = "",
@@ -314,17 +314,18 @@ def _build_row(
     row[_IDX_BELEGINFO_ART5] = "geliefert nach"
     row[_IDX_BELEGINFO_INH5] = invoice.ship_to.country_iso
 
-    # EU columns
-    treatment = decision_for_eu_cols.decision.treatment
-    if treatment == TaxTreatment.OSS_B2C:
-        row[_IDX_EU_LAND_BESTIMMUNG] = invoice.ship_to.country_iso
-        dest_rate = STANDARD_VAT_RATE.get(invoice.ship_to.country_iso)
-        if dest_rate is not None:
-            row[_IDX_EU_SATZ_BESTIMMUNG] = str(int(dest_rate) if dest_rate == int(dest_rate) else dest_rate)
-    elif treatment == TaxTreatment.IGL_B2B:
-        vat_id = decision_for_eu_cols.decision.cleaned_vat_id
-        if vat_id:
-            row[_IDX_EU_LAND_BESTIMMUNG] = vat_id
+    # EU columns (skip when no decision is available — error/unknown placeholder rows)
+    if decision_for_eu_cols is not None:
+        treatment = decision_for_eu_cols.decision.treatment
+        if treatment == TaxTreatment.OSS_B2C:
+            row[_IDX_EU_LAND_BESTIMMUNG] = invoice.ship_to.country_iso
+            dest_rate = STANDARD_VAT_RATE.get(invoice.ship_to.country_iso)
+            if dest_rate is not None:
+                row[_IDX_EU_SATZ_BESTIMMUNG] = str(int(dest_rate) if dest_rate == int(dest_rate) else dest_rate)
+        elif treatment == TaxTreatment.IGL_B2B:
+            vat_id = decision_for_eu_cols.decision.cleaned_vat_id
+            if vat_id:
+                row[_IDX_EU_LAND_BESTIMMUNG] = vat_id
 
     # EU Ursprung: our own VAT ID when warehouse is non-DE
     if invoice.warehouse_country != "DE":
@@ -369,67 +370,93 @@ def write_extf_buchungsstapel(
         for invoice in invoices:
             line_decisions = decisions_by_invoice(invoice)
 
-            # Check for error-level mismatches (skip)
-            has_error = _has_error_mismatch(invoice, line_decisions)
-            if has_error:
-                report.skipped_error += 1
-                report.skipped_details.append(
-                    SkippedBeleg(
-                        invoice_no=invoice.invoice_no,
-                        reason="error-level mismatch — manual review required",
-                        severity="error",
-                    )
-                )
-                logger.warning(
-                    "DATEV export: skipping %s (error-level mismatch)",
-                    invoice.invoice_no,
-                )
-                continue
-
-            # Resolve account + debitor for each line
-            line_accounts: list[tuple[LineDecision, DatevAccount]] = []
-            has_unknown = False
-            for ld in line_decisions:
-                if ld.decision.treatment == TaxTreatment.UNKNOWN:
-                    has_unknown = True
-                    break
-                acc = map_to_datev_account(invoice, ld.line, ld.decision)
-                if acc.account == "0000000":
-                    logger.warning(
-                        "DATEV export: no account for %s line %d: %s",
-                        invoice.invoice_no,
-                        ld.line.line_no,
-                        acc.note,
-                    )
-                    has_unknown = True
-                    break
-                line_accounts.append((ld, acc))
-
-            if has_unknown:
-                report.skipped_unknown += 1
-                report.skipped_details.append(
-                    SkippedBeleg(
-                        invoice_no=invoice.invoice_no,
-                        reason="UNKNOWN treatment — manual review required",
-                        severity="unknown",
-                    )
-                )
-                logger.warning(
-                    "DATEV export: skipping %s (UNKNOWN treatment)",
-                    invoice.invoice_no,
-                )
-                continue
-
             debitor = map_to_debitor_account(
                 invoice,
                 payment_method=invoice.payment_method,
                 default=settings.datev_default_debitor,
             )
-
             customer_name = _customer_name(invoice)
             buchungstext = _sanitize_buchungstext(
                 f"{invoice.invoice_no} {customer_name}".strip()
             )
+
+            # Detect error / unknown belege — these still get a row but with
+            # an empty Gegenkonto and a marker in Belegfeld 2 so the operator
+            # can filter and correct manually instead of silently losing them.
+            has_error = _has_error_mismatch(invoice, line_decisions)
+            has_unknown = any(
+                ld.decision.treatment == TaxTreatment.UNKNOWN for ld in line_decisions
+            )
+            problem_marker = ""
+            if has_error:
+                problem_marker = "ERROR"
+                report.skipped_error += 1
+                report.skipped_details.append(
+                    SkippedBeleg(invoice.invoice_no, "error-level mismatch", "error")
+                )
+                logger.warning("DATEV export: %s flagged ERROR", invoice.invoice_no)
+            elif has_unknown:
+                problem_marker = "UNKNOWN"
+                report.skipped_unknown += 1
+                report.skipped_details.append(
+                    SkippedBeleg(invoice.invoice_no, "UNKNOWN treatment", "unknown")
+                )
+                logger.warning("DATEV export: %s flagged UNKNOWN", invoice.invoice_no)
+
+            if problem_marker:
+                # Single placeholder row with empty Gegenkonto. Sum gross over
+                # all lines so the operator at least sees the order total.
+                gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
+                first_ld = line_decisions[0] if line_decisions else None
+                placeholder = DatevAccount(account="", bu_key="")
+                row = _build_row(
+                    invoice=invoice,
+                    gross_sum=gross_sum,
+                    account=placeholder,
+                    debitor=debitor,
+                    decision_for_eu_cols=first_ld,
+                    settings=settings,
+                    buchungstext=buchungstext,
+                    customer_name=customer_name,
+                )
+                row[_IDX_BELEGFELD2] = problem_marker
+                writer.writerow(row)
+                report.bookings_written += 1
+                continue
+
+            # Resolve account + debitor for each line
+            line_accounts: list[tuple[LineDecision, DatevAccount]] = []
+            for ld in line_decisions:
+                acc = map_to_datev_account(invoice, ld.line, ld.decision)
+                if acc.account == "0000000":
+                    # Unmapped — treat as UNKNOWN going forward so we still
+                    # write a placeholder row instead of dropping the booking.
+                    logger.warning(
+                        "DATEV export: no account for %s line %d (%s) — flagging UNKNOWN",
+                        invoice.invoice_no, ld.line.line_no, acc.note,
+                    )
+                    line_accounts = []
+                    break
+                line_accounts.append((ld, acc))
+
+            if not line_accounts:
+                gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
+                placeholder = DatevAccount(account="", bu_key="")
+                row = _build_row(
+                    invoice=invoice,
+                    gross_sum=gross_sum,
+                    account=placeholder,
+                    debitor=debitor,
+                    decision_for_eu_cols=line_decisions[0] if line_decisions else None,
+                    settings=settings,
+                    buchungstext=buchungstext,
+                    customer_name=customer_name,
+                )
+                row[_IDX_BELEGFELD2] = "UNKNOWN"
+                report.skipped_unknown += 1
+                writer.writerow(row)
+                report.bookings_written += 1
+                continue
 
             # Group lines by (account, bu_key) — aggregate gross
             groups: dict[tuple[str, str], tuple[Decimal, LineDecision]] = {}
@@ -453,15 +480,12 @@ def write_extf_buchungsstapel(
                     customer_name=customer_name,
                 )
                 if compare_map is not None:
-                    # Match by invoice number — stable across the 2026 Belegfeld-1
-                    # convention change. Only mark when the invoice IS in the
-                    # reference but the (Konto, BU) differs; invoices missing
-                    # from the reference are out-of-period or post-cutoff and
-                    # not actionable diffs.
                     ref = compare_map.get(invoice.invoice_no)
                     if ref is not None and (acct_no, bu_key) not in ref:
-                        row[_IDX_BELEGFELD2] = "X"
-                        report.diff_marked += 1
+                        # Don't overwrite ERROR/UNKNOWN markers with X
+                        if not row[_IDX_BELEGFELD2]:
+                            row[_IDX_BELEGFELD2] = "X"
+                            report.diff_marked += 1
                 writer.writerow(row)
                 report.bookings_written += 1
 
