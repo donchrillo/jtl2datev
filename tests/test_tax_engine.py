@@ -82,11 +82,30 @@ def test_third_country_de_to_us() -> None:
     assert d.expected_vat_rate == Decimal("0")
 
 
-def test_marketplace_facilitator_pl_to_gb_amazon() -> None:
-    inv = _invoice("PL", "GB", platform_name="Amazon")
-    d = decide(inv, _BASE_LINE, own_vat_countries=OWN_VAT)
+def test_marketplace_facilitator_when_gross_equals_net() -> None:
+    """Amazon withheld VAT → gross == net → MARKETPLACE_FACILITATOR."""
+    line = RawInvoiceLine(
+        line_no=0, quantity=Decimal("1"), net=Decimal("100"),
+        gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
+    )
+    inv = _invoice("PL", "GB", platform_name="Amazon.co.uk")
+    inv = inv.model_copy(update={"lines": (line,)})
+    d = decide(inv, line, own_vat_countries=OWN_VAT)
     assert d.treatment == TaxTreatment.MARKETPLACE_FACILITATOR
     assert d.expected_vat_rate == Decimal("0")
+
+
+def test_export_local_vat_when_amazon_uk_didnt_withhold() -> None:
+    """Edge case: Amazon UK didn't withhold (gross != net) → we owe UK VAT."""
+    line = RawInvoiceLine(
+        line_no=0, quantity=Decimal("1"), net=Decimal("20.64"),
+        gross=Decimal("24.77"), vat_amount=Decimal("4.13"), vat_rate=Decimal("20"),
+    )
+    inv = _invoice("ES", "GB", platform_name="Amazon.co.uk")
+    inv = inv.model_copy(update={"lines": (line,)})
+    d = decide(inv, line, own_vat_countries=OWN_VAT)
+    assert d.treatment == TaxTreatment.EXPORT_LOCAL_VAT
+    assert d.expected_vat_rate == Decimal("20")
 
 
 def test_unknown_warehouse_warns() -> None:

@@ -59,6 +59,7 @@ class TaxTreatment(StrEnum):
     IGL_B2B = "IGL_B2B"
     THIRD_COUNTRY = "THIRD_COUNTRY"
     MARKETPLACE_FACILITATOR = "MARKETPLACE_FACILITATOR"
+    EXPORT_LOCAL_VAT = "EXPORT_LOCAL_VAT"  # UK/CH delivery where we owe the destination VAT
     UNKNOWN = "UNKNOWN"
 
 

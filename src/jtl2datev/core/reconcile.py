@@ -20,14 +20,28 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
         is_marketplace_facilitator = decision.treatment == TaxTreatment.MARKETPLACE_FACILITATOR
 
         if decision.expected_vat_rate != line.vat_rate:
-            # Lines with 0% VAT in a taxable treatment are typically shipping,
-            # discounts, or otherwise tax-free positions — not actionable as a
-            # tax-rate mismatch, downgrade to info.
-            zero_in_taxable = (
+            # Lines with 0% VAT and gross 0 are typically shipping / discount /
+            # tax-free positions — not actionable, downgrade to info.
+            # Lines with 0% VAT but gross > 0 in a taxable treatment indicate
+            # missing VAT (e.g. user error on a credit note) — keep as warn,
+            # promote to error on credit notes where the operator should have
+            # noticed.
+            zero_vat_zero_gross = (
                 line.vat_rate == 0
+                and line.gross == 0
                 and decision.treatment in (TaxTreatment.DOMESTIC, TaxTreatment.OSS_B2C)
             )
-            severity = "info" if (is_marketplace_facilitator or zero_in_taxable) else "warn"
+            zero_vat_with_gross = (
+                line.vat_rate == 0
+                and line.gross > 0
+                and decision.treatment in (TaxTreatment.DOMESTIC, TaxTreatment.OSS_B2C)
+            )
+            if is_marketplace_facilitator or zero_vat_zero_gross:
+                severity = "info"
+            elif zero_vat_with_gross and invoice.is_credit_note:
+                severity = "error"
+            else:
+                severity = "warn"
             mismatches.append(
                 ReconcileMismatch(
                     invoice_no=invoice.invoice_no,

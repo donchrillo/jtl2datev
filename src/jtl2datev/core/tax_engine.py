@@ -141,14 +141,25 @@ def decide(
     # 2) Third-country destination
     if dest not in EU_COUNTRIES:
         platform = (invoice.platform_name or "").lower()
-        is_marketplace_facilitator = (
+        amazon_uk_ch = (
             dest in MARKETPLACE_FACILITATOR_DESTINATIONS
             and platform.startswith(_AMAZON_PLATFORM_PREFIX)
         )
-        if is_marketplace_facilitator:
+        if amazon_uk_ch:
+            # Marketplace-Facilitator only when gross == net (Amazon withheld
+            # the destination VAT itself). When they differ, Amazon left the
+            # VAT to us — we must remit it under our local registration.
+            if line.gross == line.net:
+                return TaxDecision(
+                    treatment=TaxTreatment.MARKETPLACE_FACILITATOR,
+                    expected_vat_rate=_ZERO,
+                    tax_country=dest,
+                    cleaned_vat_id=cleaned_vat_id,
+                    notes=tuple(notes),
+                )
             return TaxDecision(
-                treatment=TaxTreatment.MARKETPLACE_FACILITATOR,
-                expected_vat_rate=_ZERO,
+                treatment=TaxTreatment.EXPORT_LOCAL_VAT,
+                expected_vat_rate=line.vat_rate,
                 tax_country=dest,
                 cleaned_vat_id=cleaned_vat_id,
                 notes=tuple(notes),
