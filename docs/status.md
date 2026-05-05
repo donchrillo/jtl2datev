@@ -2,6 +2,90 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-05 — Gutschriften-Quelle (`dbo.tgutschrift`) integriert
+
+- **`_fetch_credit_notes()`** dritte Quelle in `JtlInvoiceRepository`. Liest `dbo.tgutschrift` + `dbo.tGutschriftPos`, JOIN auf `Rechnung.tRechnung` (Lagerland + externe Auftragsnr) + `tRechnungAdresse` (nTyp=0/1) + `dbo.tPlattform`. Filter: `nStorno=0`, `kRechnung IS NOT NULL`, Datum-Floor 2024-11-01.
+- `RawInvoice.source` Literal um `"jtl_credit_note"` erweitert. `is_credit_note=True` immer.
+- Beträge bleiben **positiv** (Gutschrift-Brutto-Konvention; DATEV-Vorzeichen kommt später).
+- `nBelegtyp=2` in externen Belegen wird als reguläre B2B-Restposten-Rechnung gelesen (Liquidationen, vom User abgeschaltet aber historische Belege bleiben).
+- Smoke Q1 2026: 1.441 eigene + 11.933 extern + 245 Gutschriften = 13.619 Belege.
+- 10 Unit-Tests grün, 3 Integration-Tests skipped (default).
+
+## 2026-05-05 — `fetch_invoices` implementiert
+
+- **JtlInvoiceRepository.fetch_invoices()** vollständig implementiert mit zwei privaten Helpern:
+  - `_fetch_own()`: `Rechnung.tRechnung` + `Rechnung.tRechnungPosition` + `tRechnungPositionEckdaten`. Streaming-Cursor mit `itertools.groupby` über `kRechnung`. Joins zu `dbo.tPlattform`, `tRechnungAdresse` (nTyp=0/1), `tRechnungEckdaten`. Filter: `nStorno=0 AND nIstEntwurf=0 AND nIstProforma=0 AND nIstExterneRechnung=0`.
+  - `_fetch_external()`: `tExternerBeleg` + `tExternerBelegTransaktion` + `tExternerBelegPosition` + `tExternerBelegEckdaten`. `nBelegtyp=1` → `is_credit_note=True`; `nBelegtyp=0/2` → reguläre Rechnung (Typ 2 = B2B-Aufkäufer, geklärt 2026-05-05). VAT berechnet als Brutto−Netto. NULL-`cVersandlandISO` → Skip + Logging.
+  - Datum-Floor 2024-11-01 als Sicherheitsnetz hardcoded.
+- **Felder gemappt**: RawInvoice (`warehouse_country`, `invoice_date`, `lines`, `gross_amount`, `net_amount`, `vat_amount`, `is_credit_note`); RawInvoiceLine (`gross`, `net`, `vat`, `vat_rate`).
+- **Tests**: 2 Integration-Tests (Smoke + Datum-Floor) mit `@pytest.mark.integration`. 10 Unit-Tests grün.
+- **Smoke-Run April 2026**: 708 eigene + 2835 extern = 3543 Belege.
+
+## 2026-05-05 — DB-Erkundung Teil 2 + Schema-Korrekturen
+
+- **Wichtige Korrektur:** `dbo.tRechnung` hat nur 15 Spalten (Stub, enthält
+  aber `cErloeskonto`!). Die früher vermuteten ~60 Spalten leben in
+  `Rechnung.tRechnung` (47 Spalten, anderes Schema, gleicher PK).
+- Position-Basistabelle eigene Rechnungen: `Rechnung.tRechnungPosition`
+  (25 Spalten) + `tRechnungPositionEckdaten` (1:1, enthält `fMwStBetrag`).
+- Beträge eigener Rechnungen: `Rechnung.tRechnungEckdaten` (Brutto/Netto/
+  Bezahl-/Mahnstatus).
+- Adressen: `Rechnung.tRechnungAdresse` mit `nTyp` 0/1 (zwei Adressen je Beleg).
+- Externer-Beleg-Schema komplett erfasst: `tExternerBeleg` (32 Spalten,
+  `nBelegtyp` 0=Rechnung B2C/1=Gutschrift/2=Restposten-B2B), `tExternerBelegEckdaten`,
+  `tExternerBelegTransaktion` (Liefer-/Versandadresse + Order-ID),
+  `tExternerBelegPosition`.
+- Plattform-Lookup: `dbo.tPlattform` (51=Amazon.de, 53=UK, 54=FR, 56=IT,
+  57=ES, 60=NL, 31=ebay.de, 8=SCX/Kaufland).
+- **`dbo.tSteuerschluessel` enthält nur 1 Eintrag** (Platzhalter „JTL2Datev",
+  Schlüssel-Nr 14). DATEV-Mapping in JTL nicht gepflegt → bestätigt eigene
+  Engine; nur Roh-VAT-Sätze (`fMwSt`, `fMwStSatz`) sind brauchbar.
+- Volumen: 1.16 Mio aktive Rechnungen, 156k externe Belege. Versandländer:
+  DE/PL/CZ/FR/IT/ES/GB.
+- `.env` jetzt vorhanden, DB-Connection getestet (SQL Server 2017, tociuser).
+
+## 2026-05-05 — Architektur-Skelett implementiert
+
+- `core/config.py` (Pydantic-Settings, MSSQL+pyodbc-URL, DATEV-Mandant-Stubs)
+- `core/models.py` (PartyAddress, RawInvoice, RawInvoiceLine, TaxTreatment StrEnum, TaxDecision, LineDecision, ReconcileMismatch — alle frozen)
+- `core/repositories.py` (abstrakte InvoiceRepository-Interfaces)
+- `core/db_jtl.py` (JtlInvoiceRepository mit fetch_invoices-Stub, make_engine-Factory)
+- `core/tax_engine.py` (eigene Steuer-Entscheidungslogik: Inland / OSS B2C / IGL B2B / Drittland / Marketplace-Facilitator UK/CH; EU_COUNTRIES Konstante)
+- `core/reconcile.py` (Vergleich JTL-gespeichert vs. Engine; ReconcileMismatch bei VAT-Abweichung)
+- `core/rules.py`, `core/datev.py` (Stubs)
+- `cli.py` (export --from --to --out Command; Error-Handling für NotImplementedError und DB-Fehler)
+- 10 Tests grün (tax_engine, reconcile, cli), ruff clean, Deps via `uv pip install -e ".[dev]"` installt
+- `.env` noch nicht angelegt (User-Aufgabe)
+
+## 2026-05-05 — Strategiewechsel: eigene Steuer-Engine
+
+- Entscheidung: Wir replizieren JTLs Steuerschlüssel-Logik NICHT. Stattdessen
+  eigene Engine (`core/tax_engine.py`) auf Rohfakten + Plausi-Check
+  (`core/reconcile.py`) gegen JTLs gespeicherte Werte.
+- Begründung: Amazon liefert teils falsche Steuern (B2B-Fehlklassifikation
+  trotz ungültiger USt-IdNr.); JTL übernimmt diese Werte. Existierende Tools
+  (Taxdoo, Jera) erkennen genau diese Inkonsistenzen.
+- Vorteil: Engine ist wiederverwendbar im TOCI-ERP, JTLs DATEV-Steuerschluessel-
+  Mapping muss nicht reverse-engineered werden.
+- Konsequenz: DB-Layer liest Rohfakten (`dbo.tRechnung` +
+  `Rechnung.tExternerBeleg*`), JTLs Steuerentscheidung nur als Referenz.
+
+## 2026-05-05 — JTL-DB-Erkundung (Teil 1)
+
+- Verbindungsdaten dokumentiert (`192.168.178.2:50000/eazybusiness`, SQL-Login),
+  `.env.example` angelegt, `.env` gitignored.
+- Geschäftsmodell erfasst: Lager DE + Amazon-FBA in CZ/PL/IT/FR/ES/UK, eigene
+  USt-IDs in jedem Lagerland; OSS aktiv für EU-grenzüberschreitend; lokale
+  Steuerberater für Lager-→-eigenes-Lagerland; UK/CH Spezialfall (Marketplace-
+  Facilitator); eigene Rechnungen nur eBay+Kaufland; Amazon/Otto extern; TEMU
+  raus.
+- JTL-2.0-Schema erkundet: ~60-Spalten-`tRechnung` mit allen Routing-Feldern
+  (`nIstExterneRechnung`, `cVersandlandISO`, `cErloeskonto`, `cKundeUstId`,
+  `kPlattform`, …); externe Belege haben eigenen Schlüsselraum
+  (`vExternerBelegSteuerermittlungsdaten`); Steuerschlüssel-Routing in
+  `Steuern.vSteuerschluessel` (Standard / IGL / UstIGL / ReverseCharge).
+- Architektur-Datenfluss skizziert.
+
 ## 2026-05-05 — Projekt-Setup
 - Verzeichnisstruktur, venv (Python 3.12, uv), `pyproject.toml` mit Deps-Stubs
 - `CLAUDE.md` (schlank), `next-session.md`, Doku-Skelette in `docs/`
