@@ -41,9 +41,15 @@ SELECT
     -- Delivery address (nTyp=0)
     ship.cISO                 AS ship_country,
     ship.cBundesland          AS ship_region,
+    ship.cVorname             AS ship_first_name,
+    ship.cName                AS ship_last_name,
+    ship.cFirma               AS ship_company,
     -- Billing address (nTyp=1)
     bill.cISO                 AS bill_country,
     bill.cBundesland          AS bill_region,
+    bill.cVorname             AS bill_first_name,
+    bill.cName                AS bill_last_name,
+    bill.cFirma               AS bill_company,
     -- Position fields
     pos.kRechnungPosition     AS pos_key,
     pos.nSort                 AS line_no,
@@ -103,9 +109,11 @@ SELECT
     -- Billing address (directly on header)
     eb.cRALandISO             AS bill_country,
     eb.cRAStaat               AS bill_region,
+    eb.cRAName                AS bill_full_name,
     -- Delivery + warehouse from Transaktion
     tr.cLALandISO             AS ship_country,
     tr.cLAStaat               AS ship_region,
+    tr.cLAName                AS ship_full_name,
     tr.cVALandISO             AS warehouse_country,
     tr.cExterneAuftragsnummer AS external_order_no,
     tr.kExternerBelegTransaktion AS transakt_key,
@@ -160,9 +168,15 @@ SELECT
     -- Delivery address (nTyp=0) from tRechnungAdresse
     ship.cISO                  AS ship_country,
     ship.cBundesland           AS ship_region,
+    ship.cVorname              AS ship_first_name,
+    ship.cName                 AS ship_last_name,
+    ship.cFirma                AS ship_company,
     -- Billing address (nTyp=1) from tRechnungAdresse
     bill.cISO                  AS bill_country,
     bill.cBundesland           AS bill_region,
+    bill.cVorname              AS bill_first_name,
+    bill.cName                 AS bill_last_name,
+    bill.cFirma                AS bill_company,
     -- Position fields (dbo.tGutschriftPos)
     pos.kGutschriftPos         AS pos_key,
     pos.nSort                  AS line_no,
@@ -259,11 +273,17 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country,
                     region=first["ship_region"],
+                    first_name=first["ship_first_name"] or None,
+                    last_name=first["ship_last_name"] or None,
+                    company=first["ship_company"] or None,
                 )
                 bill_to = PartyAddress(
                     country_iso=bill_country,
                     region=first["bill_region"],
                     vat_id=first["customer_vat_id"] or None,
+                    first_name=first["bill_first_name"] or None,
+                    last_name=first["bill_last_name"] or None,
+                    company=first["bill_company"] or None,
                 )
 
                 lines: list[RawInvoiceLine] = []
@@ -355,11 +375,13 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country.strip(),
                     region=first["ship_region"] or None,
+                    last_name=first["ship_full_name"] or None,
                 )
                 bill_to = PartyAddress(
                     country_iso=bill_country.strip(),
                     region=first["bill_region"] or None,
                     vat_id=first["customer_vat_id"] or None,
+                    last_name=first["bill_full_name"] or None,
                 )
 
                 lines: list[RawInvoiceLine] = []
@@ -453,11 +475,17 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country.strip(),
                     region=first["ship_region"] or None,
+                    first_name=first["ship_first_name"] or None,
+                    last_name=first["ship_last_name"] or None,
+                    company=first["ship_company"] or None,
                 )
                 bill_to = PartyAddress(
                     country_iso=bill_country.strip(),
                     region=first["bill_region"] or None,
                     vat_id=first["customer_vat_id"] or None,
+                    first_name=first["bill_first_name"] or None,
+                    last_name=first["bill_last_name"] or None,
+                    company=first["bill_company"] or None,
                 )
 
                 lines: list[RawInvoiceLine] = []

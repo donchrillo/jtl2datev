@@ -14,6 +14,21 @@ class PartyAddress(BaseModel):
     country_iso: str  # 2-letter ISO
     region: str | None = None
     vat_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    company: str | None = None
+
+    def display_name(self) -> str:
+        """Single-line name for DATEV Buchungstext.
+
+        Priority: company > "last_name first_name" > empty.
+        Surname-first matches the Jera convention used by the German tax
+        consultant; sorts naturally and is what the operator expects to see.
+        """
+        if self.company:
+            return self.company.strip()
+        parts = [p for p in (self.last_name, self.first_name) if p]
+        return " ".join(parts).strip()
 
 
 class RawInvoiceLine(BaseModel):

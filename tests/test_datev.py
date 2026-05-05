@@ -12,6 +12,7 @@ from jtl2datev.core.datev import (
     ExportReport,
     _format_belegdatum,
     _format_decimal,
+    _sanitize_buchungstext,
     write_extf_buchungsstapel,
 )
 from jtl2datev.core.models import (
@@ -59,9 +60,12 @@ def _invoice(
     vat_id: str | None = None,
     payment_method: str | None = "AmazonPayments",
     external_order_no: str | None = "TEST-ORDER-123",
+    bill_to: PartyAddress | None = None,
 ) -> RawInvoice:
     if lines is None:
         lines = (_line(),)
+    if bill_to is None:
+        bill_to = PartyAddress(country_iso=dest, vat_id=vat_id)
     return RawInvoice(
         source="jtl_external",
         invoice_no=invoice_no,
@@ -70,7 +74,7 @@ def _invoice(
         currency_factor=Decimal("1"),
         warehouse_country=wh,
         ship_to=PartyAddress(country_iso=dest),
-        bill_to=PartyAddress(country_iso=dest, vat_id=vat_id),
+        bill_to=bill_to,
         is_credit_note=is_credit_note,
         lines=lines,
         payment_method=payment_method,
@@ -378,3 +382,89 @@ class TestSkipRules:
 
         assert report.bookings_written == 0
         assert report.skipped_error == 1
+
+
+class TestPartyAddressDisplayName:
+    def test_company_wins(self) -> None:
+        addr = PartyAddress(country_iso="DE", first_name="Max", last_name="Muster", company="Acme GmbH")
+        assert addr.display_name() == "Acme GmbH"
+
+    def test_first_and_last(self) -> None:
+        addr = PartyAddress(country_iso="DE", first_name="Max", last_name="Mustermann")
+        assert addr.display_name() == "Mustermann Max"
+
+    def test_last_name_only(self) -> None:
+        addr = PartyAddress(country_iso="DE", last_name="Mustermann")
+        assert addr.display_name() == "Mustermann"
+
+    def test_empty_when_no_names(self) -> None:
+        addr = PartyAddress(country_iso="DE")
+        assert addr.display_name() == ""
+
+    def test_strips_whitespace(self) -> None:
+        addr = PartyAddress(country_iso="DE", company="  Acme GmbH  ")
+        assert addr.display_name() == "Acme GmbH"
+
+
+class TestSanitizeBuchungstext:
+    def test_semicolon_replaced(self) -> None:
+        assert ";" not in _sanitize_buchungstext("R-001; foo")
+
+    def test_newline_replaced(self) -> None:
+        assert "\n" not in _sanitize_buchungstext("R-001\nfoo")
+
+    def test_max_60_chars(self) -> None:
+        long_text = "R-" + "X" * 100
+        result = _sanitize_buchungstext(long_text)
+        assert len(result) <= 60
+
+
+class TestBuchungstextWithCustomerName:
+    def _get_data_rows(self, invoices: list[RawInvoice]) -> list[list[str]]:
+        settings = _settings()
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            out = Path(tmp.name)
+        write_extf_buchungsstapel(
+            iter(invoices),
+            out_path=out,
+            settings=settings,
+            date_from=date(2026, 3, 1),
+            date_to=date(2026, 3, 31),
+            decisions_by_invoice=_decisions,
+        )
+        with out.open(encoding="cp1252", newline="") as fh:
+            rows = list(csv.reader(fh, delimiter=";"))
+        out.unlink()
+        return rows[2:]
+
+    def test_buchungstext_contains_customer_name(self) -> None:
+        addr = PartyAddress(country_iso="DE", first_name="Max", last_name="Mustermann")
+        inv = _invoice(invoice_no="R-DE-2026-001", bill_to=addr)
+        rows = self._get_data_rows([inv])
+        buchungstext = rows[0][13]  # col 14 = index 13
+        assert "Mustermann Max" in buchungstext
+        assert buchungstext.startswith("R-DE-2026-001")
+
+    def test_beleginfo3_kundenname_filled(self) -> None:
+        addr = PartyAddress(country_iso="DE", first_name="Max", last_name="Mustermann")
+        inv = _invoice(invoice_no="R-DE-2026-001", bill_to=addr)
+        rows = self._get_data_rows([inv])
+        assert rows[0][24] == "Kundenname"   # Beleginfo Art 3
+        assert rows[0][25] == "Mustermann Max"  # Beleginfo Inhalt 3
+
+    def test_buchungstext_no_name_when_empty(self) -> None:
+        inv = _invoice(invoice_no="R-DE-2026-001")
+        rows = self._get_data_rows([inv])
+        buchungstext = rows[0][13]
+        assert buchungstext == "R-DE-2026-001"
+
+    def test_beleginfo3_empty_when_no_name(self) -> None:
+        inv = _invoice(invoice_no="R-DE-2026-001")
+        rows = self._get_data_rows([inv])
+        assert rows[0][25] == ""
+
+    def test_buchungstext_max_60_chars(self) -> None:
+        addr = PartyAddress(country_iso="DE", company="Sehr langer Firmenname GmbH & Co. KG XYZ")
+        inv = _invoice(invoice_no="R-DE-249030238-2026-322", bill_to=addr)
+        rows = self._get_data_rows([inv])
+        assert len(rows[0][13]) <= 60

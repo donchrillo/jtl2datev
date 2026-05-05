@@ -197,20 +197,30 @@ def _format_belegdatum(d: date) -> str:
     return f"{d.day}{d.month:02d}"
 
 
+def _to_cp1252(val: str) -> str:
+    """Replace characters not encodable in cp1252 with '?'."""
+    return val.encode("cp1252", errors="replace").decode("cp1252")
+
+
 def _safe_text(val: str | None) -> str:
-    """Strip semicolons and newlines to prevent CSV corruption."""
+    """Strip semicolons and newlines to prevent CSV corruption; ensure cp1252-safe."""
     if not val:
         return ""
-    return val.replace(";", " ").replace("\n", " ").replace("\r", " ").strip()
+    cleaned = val.replace(";", " ").replace("\n", " ").replace("\r", " ").strip()
+    return _to_cp1252(cleaned)
+
+
+_BUCHUNGSTEXT_MAX_LEN = 60
+
+
+def _sanitize_buchungstext(val: str) -> str:
+    """Remove DATEV-problematic characters, ensure cp1252-safe, enforce 60-char limit."""
+    cleaned = val.replace(";", " ").replace("\n", " ").replace("\r", " ").strip()
+    return _to_cp1252(cleaned)[:_BUCHUNGSTEXT_MAX_LEN]
 
 
 def _customer_name(invoice: RawInvoice) -> str:
-    """Best-effort customer name from bill_to or ship_to address data."""
-    # RawInvoice doesn't have a name field — we use invoice_no as fallback.
-    # The name appears in the Buchungstext as set by the caller (billing name
-    # comes from the DB fetch; for now use what we have in the model).
-    # If bill_to has no name field we just return empty string.
-    return ""
+    return invoice.bill_to.display_name()
 
 
 def _make_extf_header(
@@ -247,6 +257,7 @@ def _build_row(
     decision_for_eu_cols: LineDecision,
     settings: Settings,
     buchungstext: str,
+    customer_name: str = "",
 ) -> list[str]:
     row: list[str] = [""] * _NUM_COLS
 
@@ -265,9 +276,9 @@ def _build_row(
     # Beleginfo 2: KundenNr
     row[_IDX_BELEGINFO_ART2] = "KundenNr"
     row[_IDX_BELEGINFO_INH2] = _safe_text(invoice.customer_no or "")
-    # Beleginfo 3: Kundenname (no name field on RawInvoice — leave empty)
+    # Beleginfo 3: Kundenname
     row[_IDX_BELEGINFO_ART3] = "Kundenname"
-    row[_IDX_BELEGINFO_INH3] = ""
+    row[_IDX_BELEGINFO_INH3] = _safe_text(customer_name)
     # Beleginfo 4: geliefert aus
     row[_IDX_BELEGINFO_ART4] = "geliefert aus"
     row[_IDX_BELEGINFO_INH4] = invoice.warehouse_country
@@ -386,7 +397,10 @@ def write_extf_buchungsstapel(
                 default=settings.datev_default_debitor,
             )
 
-            buchungstext = _safe_text(invoice.invoice_no)
+            customer_name = _customer_name(invoice)
+            buchungstext = _sanitize_buchungstext(
+                f"{invoice.invoice_no} {customer_name}".strip()
+            )
 
             # Group lines by (account, bu_key) — aggregate gross
             groups: dict[tuple[str, str], tuple[Decimal, LineDecision]] = {}
@@ -407,6 +421,7 @@ def write_extf_buchungsstapel(
                     decision_for_eu_cols=first_ld,
                     settings=settings,
                     buchungstext=buchungstext,
+                    customer_name=customer_name,
                 )
                 writer.writerow(row)
                 report.bookings_written += 1
