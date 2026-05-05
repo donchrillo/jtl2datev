@@ -32,11 +32,20 @@ def version() -> None:
     "von der Referenz abweichen (anderes Konto/BU oder gar nicht in Referenz), "
     "werden mit 'X' in Belegfeld 2 markiert.",
 )
+@click.option(
+    "--audit",
+    is_flag=True,
+    default=False,
+    help="Audit-Modus: schreibt das Engine-Regel-Tag (z.B. 'OSS241-FR-IT') "
+    "in Spalte 'Beleglink' (vor allen Beleginfo-Feldern). Vor Übergabe an "
+    "den Steuerberater wieder entfernen.",
+)
 def export_cmd(
     date_from: date,
     date_to: date,
     out_path: Path,
     compare_to: Path | None,
+    audit: bool,
 ) -> None:
     """Exportiert Rechnungen aus JTL als DATEV-CSV."""
     import datetime as dt
@@ -74,6 +83,7 @@ def export_cmd(
             date_to=dt_,
             decisions_by_invoice=decisions,
             compare_map=compare_map,
+            audit=audit,
         )
         click.echo(f"DATEV-Export geschrieben: {out_path}")
         click.echo(f"  Buchungen: {report.bookings_written}")

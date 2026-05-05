@@ -155,6 +155,7 @@ _IDX_BELEGDATUM = 9
 _IDX_BELEGFELD1 = 10
 _IDX_BELEGFELD2 = 11
 _IDX_BUCHUNGSTEXT = 13
+_IDX_BELEGLINK = 19  # Spalte 20 "Beleglink" — wir nutzen sie für den Audit-Tag (--audit)
 _IDX_BELEGINFO_ART1 = 20
 _IDX_BELEGINFO_INH1 = 21
 _IDX_BELEGINFO_ART2 = 22
@@ -286,6 +287,7 @@ def _build_row(
     settings: Settings,
     buchungstext: str,
     customer_name: str = "",
+    audit: bool = False,
 ) -> list[str]:
     row: list[str] = [""] * _NUM_COLS
 
@@ -297,6 +299,8 @@ def _build_row(
     row[_IDX_BELEGDATUM] = _format_belegdatum(invoice.invoice_date)
     row[_IDX_BELEGFELD1] = _safe_text(invoice.jtl_external_order_no or "")
     row[_IDX_BUCHUNGSTEXT] = _safe_text(buchungstext)
+    if audit and account.audit_tag:
+        row[_IDX_BELEGLINK] = account.audit_tag
 
     # Beleginfo 1: Externerauftrag
     row[_IDX_BELEGINFO_ART1] = "Externerauftrag"
@@ -351,6 +355,7 @@ def write_extf_buchungsstapel(
     date_to: date,
     decisions_by_invoice: Callable[[RawInvoice], list[LineDecision]],
     compare_map: dict[str, set[tuple[str, str]]] | None = None,
+    audit: bool = False,
 ) -> ExportReport:
     """Write EXTF Buchungsstapel CSV from invoices iterator."""
     report = ExportReport()
@@ -408,7 +413,7 @@ def write_extf_buchungsstapel(
                 # all lines so the operator at least sees the order total.
                 gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
                 first_ld = line_decisions[0] if line_decisions else None
-                placeholder = DatevAccount(account="", bu_key="")
+                placeholder = DatevAccount(account="", bu_key="", audit_tag=problem_marker)
                 row = _build_row(
                     invoice=invoice,
                     gross_sum=gross_sum,
@@ -418,6 +423,7 @@ def write_extf_buchungsstapel(
                     settings=settings,
                     buchungstext=buchungstext,
                     customer_name=customer_name,
+                    audit=audit,
                 )
                 row[_IDX_BELEGFELD2] = problem_marker
                 writer.writerow(row)
@@ -441,7 +447,7 @@ def write_extf_buchungsstapel(
 
             if not line_accounts:
                 gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
-                placeholder = DatevAccount(account="", bu_key="")
+                placeholder = DatevAccount(account="", bu_key="", audit_tag="UNKNOWN")
                 row = _build_row(
                     invoice=invoice,
                     gross_sum=gross_sum,
@@ -451,6 +457,7 @@ def write_extf_buchungsstapel(
                     settings=settings,
                     buchungstext=buchungstext,
                     customer_name=customer_name,
+                    audit=audit,
                 )
                 row[_IDX_BELEGFELD2] = "UNKNOWN"
                 report.skipped_unknown += 1
@@ -458,17 +465,17 @@ def write_extf_buchungsstapel(
                 report.bookings_written += 1
                 continue
 
-            # Group lines by (account, bu_key) — aggregate gross
-            groups: dict[tuple[str, str], tuple[Decimal, LineDecision]] = {}
+            # Group lines by (account, bu_key) — aggregate gross + keep audit_tag
+            groups: dict[tuple[str, str], tuple[Decimal, LineDecision, str]] = {}
             for ld, acc in line_accounts:
                 key = (acc.account, acc.bu_key)
                 if key not in groups:
-                    groups[key] = (Decimal("0"), ld)
-                prev_sum, first_ld = groups[key]
-                groups[key] = (prev_sum + ld.line.gross, first_ld)
+                    groups[key] = (Decimal("0"), ld, acc.audit_tag)
+                prev_sum, first_ld, tag = groups[key]
+                groups[key] = (prev_sum + ld.line.gross, first_ld, tag)
 
-            for (acct_no, bu_key), (gross_sum, first_ld) in groups.items():
-                datev_acct = DatevAccount(account=acct_no, bu_key=bu_key)
+            for (acct_no, bu_key), (gross_sum, first_ld, tag) in groups.items():
+                datev_acct = DatevAccount(account=acct_no, bu_key=bu_key, audit_tag=tag)
                 row = _build_row(
                     invoice=invoice,
                     gross_sum=gross_sum,
@@ -478,6 +485,7 @@ def write_extf_buchungsstapel(
                     settings=settings,
                     buchungstext=buchungstext,
                     customer_name=customer_name,
+                    audit=audit,
                 )
                 if compare_map is not None:
                     ref = compare_map.get(invoice.invoice_no)
