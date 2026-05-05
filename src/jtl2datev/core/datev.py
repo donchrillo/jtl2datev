@@ -186,6 +186,31 @@ class ExportReport:
     skipped_error: int = 0
     skipped_unknown: int = 0
     skipped_details: list[SkippedBeleg] = field(default_factory=list)
+    diff_marked: int = 0  # bookings marked with "X" in Belegfeld 2 (compare-to mismatch)
+
+
+def load_compare_map(path: Path) -> dict[str, set[tuple[str, str]]]:
+    """Read an existing DATEV CSV and index it by Belegfeld 1 (external order ID).
+
+    Returns: order_id → set of (Konto, BU-Schlüssel) that the reference file
+    booked for that order. Used to mark engine bookings that diverge from a
+    known-good reference (e.g. the previous-tool's export) — the divergent
+    rows get an "X" in Belegfeld 2 so the operator can filter and review.
+    """
+    out: dict[str, set[tuple[str, str]]] = {}
+    with path.open(encoding="cp1252", newline="") as fh:
+        rows = list(csv.reader(fh, delimiter=";"))
+    # Skip EXTF header (row 0) + column header (row 1)
+    for r in rows[2:]:
+        if len(r) < 11:
+            continue
+        konto = r[7]      # Gegenkonto
+        bu = r[8]         # BU-Schlüssel
+        order_id = r[10]  # Belegfeld 1
+        if not order_id:
+            continue
+        out.setdefault(order_id, set()).add((konto, bu))
+    return out
 
 
 def _format_decimal(val: Decimal) -> str:
@@ -321,6 +346,7 @@ def write_extf_buchungsstapel(
     date_from: date,
     date_to: date,
     decisions_by_invoice: Callable[[RawInvoice], list[LineDecision]],
+    compare_map: dict[str, set[tuple[str, str]]] | None = None,
 ) -> ExportReport:
     """Write EXTF Buchungsstapel CSV from invoices iterator."""
     report = ExportReport()
@@ -423,6 +449,12 @@ def write_extf_buchungsstapel(
                     buchungstext=buchungstext,
                     customer_name=customer_name,
                 )
+                if compare_map is not None:
+                    order_id = invoice.jtl_external_order_no or ""
+                    ref = compare_map.get(order_id)
+                    if ref is None or (acct_no, bu_key) not in ref:
+                        row[_IDX_BELEGFELD2] = "X"
+                        report.diff_marked += 1
                 writer.writerow(row)
                 report.bookings_written += 1
 

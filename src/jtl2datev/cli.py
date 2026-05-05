@@ -23,17 +23,30 @@ def version() -> None:
 @click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("--to", "date_to", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("--out", "out_path", required=True, type=click.Path(path_type=Path))
-def export_cmd(date_from: date, date_to: date, out_path: Path) -> None:
+@click.option(
+    "--compare-to",
+    "compare_to",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Optional: bestehender DATEV-Export (z.B. Jera). Buchungen, die "
+    "von der Referenz abweichen (anderes Konto/BU oder gar nicht in Referenz), "
+    "werden mit 'X' in Belegfeld 2 markiert.",
+)
+def export_cmd(
+    date_from: date,
+    date_to: date,
+    out_path: Path,
+    compare_to: Path | None,
+) -> None:
     """Exportiert Rechnungen aus JTL als DATEV-CSV."""
     import datetime as dt
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.datev import write_extf_buchungsstapel
+    from jtl2datev.core.datev import load_compare_map, write_extf_buchungsstapel
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
     from jtl2datev.core.models import LineDecision
     from jtl2datev.core.tax_engine import decide
 
-    # click.DateTime returns datetime objects; core expects date
     df = date_from.date() if isinstance(date_from, dt.datetime) else date_from  # type: ignore[union-attr]
     dt_ = date_to.date() if isinstance(date_to, dt.datetime) else date_to  # type: ignore[union-attr]
 
@@ -44,6 +57,10 @@ def export_cmd(date_from: date, date_to: date, out_path: Path) -> None:
             LineDecision(line=line, decision=decide(inv, line, own_vat_countries=settings.own_vat_countries))
             for line in inv.lines
         ]
+
+    compare_map = load_compare_map(compare_to) if compare_to is not None else None
+    if compare_map is not None:
+        click.echo(f"Vergleichsreferenz geladen: {len(compare_map):,} Order-IDs aus {compare_to}")
 
     try:
         engine = make_engine(settings)
@@ -56,11 +73,14 @@ def export_cmd(date_from: date, date_to: date, out_path: Path) -> None:
             date_from=df,
             date_to=dt_,
             decisions_by_invoice=decisions,
+            compare_map=compare_map,
         )
         click.echo(f"DATEV-Export geschrieben: {out_path}")
         click.echo(f"  Buchungen: {report.bookings_written}")
         click.echo(f"  Belege geskippt (Fehler):    {report.skipped_error}")
         click.echo(f"  Belege geskippt (unbekannt): {report.skipped_unknown}")
+        if compare_map is not None:
+            click.echo(f"  Abweichungen markiert (X):   {report.diff_marked}")
     except Exception as exc:
         click.echo(f"Fehler beim Export: {exc}")
         raise SystemExit(1) from exc
