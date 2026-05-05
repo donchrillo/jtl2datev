@@ -17,7 +17,9 @@ _AMAZON_PLATFORM_PREFIX = "amazon"  # matches Amazon.de, Amazon.co.uk, Amazon.fr
 
 # Marketplace-Facilitator destinations: Amazon collects local VAT itself
 # (UK post-Brexit, Switzerland) — no VAT in our DATEV booking.
-MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB", "CH"})
+# UK is the only marketplace-facilitator destination in practice. Switzerland
+# is a regular third-country export — Amazon does not withhold Swiss VAT.
+MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB"})
 
 # Standard VAT rates per country (2026). Reduced rates not modelled —
 # Plausi mismatches there end up as warn, never error.
