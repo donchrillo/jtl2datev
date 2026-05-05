@@ -236,6 +236,35 @@ Spalte 6 ist `YYYYMMDDhhmmssfff`. Excel rundet auf wissenschaftliche Notation (`
 2. **`rules.py`** mit Mapping-Tabelle Treatment+Lagerland → (Konto, BU)
 3. **`datev.py`**: EXTF-CSV-Writer mit Header + Datenzeilen, Windows-1252-Encoding.
 
+## Sondervorgänge
+
+### Temu (`cExterneAuftragsnummer LIKE 'PO%'`) — ausgeschlossen
+
+Ende 2025 wurde Temu testweise importiert, dann vom Steuerberater zurückgerollt.
+Die `PO-…`-Bestellnummern bleiben in der DB, dürfen aber nicht in den DATEV-Export.
+Filter im SQL-Layer für `_SQL_OWN` und `_SQL_CREDIT_NOTES`:
+`cExterneAuftragsnummer NOT LIKE 'PO%'`. Sammelgutschriften (`SR202602…`) gegen
+diese Original-Rechnungen werden über den JOIN ebenfalls ausgefiltert.
+
+### Amazon Italien VCS-IDU (`cHerkunft='VCS-IDU'`) — bleibt drin
+
+Italien-spezifischer Sonderfall: bei Bargeld-/Kassen-Verkäufen erstellt Amazon
+keine Rechnung, bei späterer Erstattung fehlt der Erstattungsbeleg. Diese
+Erstattungen importiert JTL als „VCS-IDU"-Belege (`XRK-…` Gutschriften,
+`XRE-…` Rechnungen), die der User in JTL manuell vervollständigt.
+**Geld ist geflossen → muss in DATEV.**
+
+Jera erfasst sie inkonsistent (~213 Belege total, alle Amazon.it, in keinem
+der drei Q1-Jera-Exporte enthalten). Engine nimmt sie alle. Bei künftigen
+Jera-Vergleichen bewusst ignorieren — die Differenz hier ist Jera-Bug.
+
+### Jera-Phase-out (ab April 2026)
+
+Jera-Schnittstelle ist nach JTL-Software-Update inkompatibel, Lizenzen
+ausgelaufen, keine Updates mehr verfügbar. Ab April 2026 ist `jtl2datev` die
+**einzige** Quelle für DATEV-Exporte. Vergleichsbasis fehlt — Engine-Logik
+muss dann eigenständig validiert sein.
+
 ## Offene Punkte vor finaler Implementation
 
 - [x] ~~Sachkonten-Mapping bestätigt~~ (vollständig in `samples/jera/SachkontenZuordnung.csv` dokumentiert)

@@ -8,6 +8,14 @@ Datenleseschicht + Steuer-Engine + Reconcile + **DATEV-Export** stehen
 (größte Abweichung 4001000 ist nun Δ +28 — vorher +995, Fix war
 EU→DE-OSS-Sonderfall).
 
+## Strategischer Hinweis: Jera-Phase-out
+
+Jera-Schnittstelle ist nach JTL-Software-Update kaputt (Lizenzen ausgelaufen,
+keine Updates mehr). Ab April 2026 ist `jtl2datev` die einzige Quelle für
+DATEV-Exporte. Vergleichsbasis fehlt — alle Engine-Anpassungen müssen
+eigenständig validierbar sein. März 2026 ist der letzte Monat mit
+vollständigem Jera-Referenz-Export.
+
 ## Offene Punkte
 
 ### 1. Kundenname / Adressdaten in `RawInvoice`
