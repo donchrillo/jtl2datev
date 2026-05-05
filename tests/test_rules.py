@@ -121,21 +121,23 @@ class TestOSS:
 
 
 class TestIGL:
-    def test_de_to_fr_b2b_igl_4125000(self) -> None:
+    """Per Jera convention: all IGL bookings go to 4126000 regardless of warehouse."""
+
+    def test_de_to_fr_b2b_igl_4126000(self) -> None:
         inv = _invoice("DE", "FR", vat_id="FR12345678901")
         line = _line(_ZERO, gross=Decimal("100"), net=Decimal("100"))
         dec = _decision(TaxTreatment.IGL_B2B, vat_id="FR12345678901", tax_country="DE")
         result = map_to_datev_account(inv, line, dec)
-        assert result.account == "4125000"
+        assert result.account == "4126000"
         assert result.bu_key == ""
 
-    def test_fr_to_de_b2b_igl_4001000_bu285(self) -> None:
+    def test_fr_to_de_b2b_igl_4126000(self) -> None:
         inv = _invoice("FR", "DE", vat_id="DE123456789")
         line = _line(_ZERO, gross=Decimal("100"), net=Decimal("100"))
         dec = _decision(TaxTreatment.IGL_B2B, vat_id="DE123456789", tax_country="FR")
         result = map_to_datev_account(inv, line, dec)
-        assert result.account == "4001000"
-        assert result.bu_key == "285"
+        assert result.account == "4126000"
+        assert result.bu_key == ""
 
     def test_eu_to_eu_b2b_igl_4126000(self) -> None:
         inv = _invoice("IT", "ES", vat_id="ESA12345678")
@@ -146,12 +148,14 @@ class TestIGL:
 
 
 class TestThirdCountry:
-    def test_de_to_us_third_country_4120000(self) -> None:
+    """Per Jera convention: all third-country exports go to 4121000 regardless of warehouse."""
+
+    def test_de_to_us_third_country_4121000(self) -> None:
         inv = _invoice("DE", "US")
         line = _line(_ZERO, gross=Decimal("100"), net=Decimal("100"))
         dec = _decision(TaxTreatment.THIRD_COUNTRY, tax_country="US")
         result = map_to_datev_account(inv, line, dec)
-        assert result.account == "4120000"
+        assert result.account == "4121000"
 
     def test_gb_to_us_third_country_4121000(self) -> None:
         inv = _invoice("GB", "US")

@@ -477,17 +477,30 @@ def write_extf_buchungsstapel(
 def _has_error_mismatch(invoice: RawInvoice, line_decisions: list[LineDecision]) -> bool:
     """Check if any line has an error-level reconcile condition.
 
-    Error condition: a line with a non-zero vat_amount but engine expects 0
-    (IGL_B2B, THIRD_COUNTRY, MARKETPLACE_FACILITATOR).
-    These indicate data corruption that needs manual correction.
+    Errors:
+    - Engine expects 0% VAT (IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR)
+      but JTL has a non-zero vat_amount.
+    - Credit note with a positive gross but 0% VAT in a taxable treatment
+      (DOMESTIC / OSS_B2C). This is the "operator forgot the VAT" pattern
+      that surfaced in the reconcile report; Jera lands such bookings on
+      the catch-all 4970000 ("DPD Schaden"). We skip them so the user
+      corrects the source data and re-runs the export.
     """
     zero_vat_treatments = {
         TaxTreatment.IGL_B2B,
         TaxTreatment.THIRD_COUNTRY,
         TaxTreatment.MARKETPLACE_FACILITATOR,
     }
+    taxable_treatments = {TaxTreatment.DOMESTIC, TaxTreatment.OSS_B2C}
     for ld in line_decisions:
         if ld.decision.treatment in zero_vat_treatments:
             if ld.line.vat_amount != Decimal("0"):
                 return True
+        if (
+            invoice.is_credit_note
+            and ld.decision.treatment in taxable_treatments
+            and ld.line.vat_rate == Decimal("0")
+            and ld.line.gross > Decimal("0")
+        ):
+            return True
     return False

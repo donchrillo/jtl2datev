@@ -88,13 +88,13 @@ def map_to_datev_account(
 
     # 1. Helgoland (customs-free zone, like third-country)
     if dest == _HELGOLAND:
-        return DatevAccount(account="4120000")
+        return DatevAccount(account="4121000")
 
-    # 2. Third-country destinations (outside EU + GB + CH)
+    # 2. Third-country destinations (outside EU + GB + CH).
+    # Per Jera convention all third-country exports go to 4121000 regardless
+    # of warehouse (the SachkontenZuordnung row "DE → Drittl. → 4120000" is
+    # not actually used in production).
     if dest not in _EU_ALL and dest not in ("GB", "CH", _HELGOLAND):
-        if wh == "DE":
-            return DatevAccount(account="4120000")
-        # EU warehouse or GB warehouse → third-country export
         return DatevAccount(account="4121000")
 
     # 3. GB destination (post-Brexit, Marketplace-Facilitator or Export-Local-VAT)
@@ -140,20 +140,12 @@ def map_to_datev_account(
             note=f"DOMESTIC: no account mapping for warehouse {wh!r}",
         )
 
-    # 6. IGL_B2B (cross-border EU with customer VAT ID)
+    # 6. IGL_B2B (cross-border EU with customer VAT ID).
+    # Per Jera convention all IGL deliveries are booked to 4126000 regardless
+    # of warehouse. The SachkontenZuordnung row "DE → EU mit UStID → 4125000"
+    # has not actually been used in production; user will clarify with the tax
+    # consultant whether DE-warehouse IGL should later get its own account.
     if treatment == TaxTreatment.IGL_B2B:
-        if wh == "DE":
-            if dest == "DE":
-                # Shouldn't happen (domestic would catch it), but guard
-                return DatevAccount(account="4001000", bu_key="285", note="DE→DE B2B anomaly")
-            # DE → EU B2B: intracommunity supply
-            return DatevAccount(account="4125000")
-        # EU non-DE warehouse
-        if dest == "DE":
-            # EU warehouse → DE B2B customer: intracommunity acquisition from seller's POV
-            # We book as 4001000 BU 285 (Jera sample confirms this pattern)
-            return DatevAccount(account="4001000", bu_key="285")
-        # EU warehouse → other EU country B2B
         return DatevAccount(account="4126000")
 
     # 7. OSS_B2C (cross-border EU, B2C)
@@ -169,8 +161,6 @@ def map_to_datev_account(
 
     # 8. THIRD_COUNTRY treatment with EU destination: shouldn't normally happen
     if treatment == TaxTreatment.THIRD_COUNTRY:
-        if wh == "DE":
-            return DatevAccount(account="4120000", note="THIRD_COUNTRY to EU dest — verify")
         return DatevAccount(account="4121000", note="THIRD_COUNTRY to EU dest — verify")
 
     # Fallback for UNKNOWN or unhandled
