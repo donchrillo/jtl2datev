@@ -84,9 +84,13 @@ WHERE r.nStorno = 0
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
-  -- Bundle/configurator children carry no price/VAT — skip; the master line carries the totals.
-  AND pos.kKonfigVaterRechnungPos IS NULL
-  AND pos.kStuecklisteRechnungPos IS NULL
+  -- Bundle/configurator children carry no price/VAT — skip; the master line
+  -- carries the totals. Master rows self-reference via kStuecklisteRechnungPos
+  -- = kRechnungPosition; only true children (different value) must be filtered.
+  AND (pos.kKonfigVaterRechnungPos IS NULL
+       OR pos.kKonfigVaterRechnungPos = pos.kRechnungPosition)
+  AND (pos.kStuecklisteRechnungPos IS NULL
+       OR pos.kStuecklisteRechnungPos = pos.kRechnungPosition)
 ORDER BY r.kRechnung, pos.nSort
 """)
 
@@ -137,11 +141,14 @@ LEFT JOIN Rechnung.tExternerBelegTransaktion tr
     ON tr.kExternerBeleg = eb.kExternerBeleg
 JOIN Rechnung.tExternerBelegPosition ebp
     ON ebp.kExternerBelegTransaktion = tr.kExternerBelegTransaktion
-WHERE ISNULL(eck.nIstStorniert, 0) = 0
-  AND eb.dBelegdatumUtc >= :hard_min
+WHERE eb.dBelegdatumUtc >= :hard_min
   AND eb.dBelegdatumUtc >= :date_from
   AND eb.dBelegdatumUtc < :date_to_excl
   AND eb.nBelegtyp IN (0, 1, 2)
+  -- Note: nIstStorniert=1 invoices stay in the export. JTL flags an invoice
+  -- as storniert when a counter-credit-note (nBelegtyp=1 with cBezugsbelegnr
+  -- = the original Belegnr) was issued; both bookings must hit the export
+  -- so the audit trail is complete and the net effect is zero.
   -- Bundle children carry no price/VAT.
   AND ebp.kExternerBelegPositionVater IS NULL
 ORDER BY eb.kExternerBeleg, ebp.kExternerBelegPosition
@@ -206,8 +213,11 @@ WHERE g.nStorno = 0
   AND g.dErstellt >= :hard_min
   AND g.dErstellt >= :date_from
   AND g.dErstellt <  :date_to_excl
-  -- Bundle children carry no price/VAT (kGutschriftStueckliste != 0 means child).
-  AND pos.kGutschriftStueckliste = 0
+  -- Bundle children carry no price/VAT. Master rows self-reference via
+  -- kGutschriftStueckliste = kGutschriftPos; only true children (different
+  -- non-zero value) must be filtered out.
+  AND (pos.kGutschriftStueckliste = 0
+       OR pos.kGutschriftStueckliste = pos.kGutschriftPos)
 ORDER BY g.kGutschrift, pos.nSort
 """)
 
