@@ -77,3 +77,55 @@ def test_unknown_warehouse_warns() -> None:
     inv = _invoice("SE", "SE")
     d = decide(inv, _BASE_LINE, own_vat_countries=OWN_VAT)
     assert any("own_vat_countries" in n for n in d.notes)
+
+
+def test_invalid_vat_id_format_treated_as_b2c():
+    """Customer with non-EU-prefix vat_id (e.g. Spanish CIF 'B06800015')
+    must NOT be treated as B2B — falls back to OSS_B2C."""
+    from decimal import Decimal
+    from datetime import date
+    from jtl2datev.core.tax_engine import decide
+    from jtl2datev.core.models import (
+        RawInvoice, RawInvoiceLine, PartyAddress, TaxTreatment,
+    )
+    line = RawInvoiceLine(
+        line_no=0, sku="X", description=None, quantity=Decimal("1"),
+        net=Decimal("22"), gross=Decimal("26.64"), vat_amount=Decimal("4.62"),
+        vat_rate=Decimal("21"),
+    )
+    inv = RawInvoice(
+        source="jtl_own", invoice_no="X", invoice_date=date(2026, 3, 9),
+        currency="EUR", currency_factor=Decimal("1"),
+        warehouse_country="IT",
+        ship_to=PartyAddress(country_iso="ES"),
+        bill_to=PartyAddress(country_iso="ES", vat_id="B06800015"),
+        is_credit_note=False, lines=(line,),
+    )
+    d = decide(inv, line, own_vat_countries=frozenset({"DE","FR","IT","ES","PL","CZ","GB"}))
+    assert d.treatment == TaxTreatment.OSS_B2C
+    assert d.expected_vat_rate == Decimal("21")
+    assert any("no recognised EU prefix" in n for n in d.notes)
+
+
+def test_valid_vat_id_format_still_b2b():
+    from decimal import Decimal
+    from datetime import date
+    from jtl2datev.core.tax_engine import decide
+    from jtl2datev.core.models import (
+        RawInvoice, RawInvoiceLine, PartyAddress, TaxTreatment,
+    )
+    line = RawInvoiceLine(
+        line_no=0, sku="X", description=None, quantity=Decimal("1"),
+        net=Decimal("100"), gross=Decimal("100"), vat_amount=Decimal("0"),
+        vat_rate=Decimal("0"),
+    )
+    inv = RawInvoice(
+        source="jtl_own", invoice_no="X", invoice_date=date(2026, 1, 1),
+        currency="EUR", currency_factor=Decimal("1"),
+        warehouse_country="DE",
+        ship_to=PartyAddress(country_iso="FR"),
+        bill_to=PartyAddress(country_iso="FR", vat_id="FR12345678901"),
+        is_credit_note=False, lines=(line,),
+    )
+    d = decide(inv, line, own_vat_countries=frozenset({"DE","FR","IT","ES","PL","CZ","GB"}))
+    assert d.treatment == TaxTreatment.IGL_B2B

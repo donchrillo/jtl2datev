@@ -2,6 +2,15 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-05 — Engine-Fix: VAT-ID-Format-Plausibilitätscheck
+
+- `looks_like_valid_vat_id()` Helper: erste 2 Zeichen müssen EU/GB/CH-Prefix sein, mind. 4 Zeichen, alphanumerisch danach. Volle VIES-Validierung kommt später.
+- Bug-Symptom: Marketplace-Kunden hatten teils Junk-Werte in `cKundeUstId`/`cKaeuferUstId` (z.B. spanische CIF `B06800015`); Engine hat das fälschlich als B2B → Reverse-Charge → 0% behandelt.
+- Fix: Format-Fail → fallback OSS_B2C mit Note. Echte EU-USt-IdNrn (Format-valid) werden weiterhin als IGL_B2B behandelt.
+- 2 neue Unit-Tests, alle 22 grün.
+- **Reconcile-Effekt Q1 2026:** Mismatch-Belege **8 → 1**, Mismatches gesamt **26 → 2**. Engine-Match jetzt **99.99%**.
+- Verbleibender Mismatch ist kein Bug: ES-Lager → UK-Kunde → Amazon.co.uk; Engine sagt MARKETPLACE_FACILITATOR (0%), JTL speichert 20% UK-VAT (Roh-Info). Beide korrekt in ihrem Kontext — sollte später als `info`-severity geflaggt werden.
+
 ## 2026-05-05 — Reconcile-Pipeline + erster Engine-Test gegen Q1 2026
 
 - Neuer `core/pipeline.py` mit `ReconcileReport` (Counters: Treatments, Mismatches by severity/source/warehouse) und streaming `run_reconcile()`.

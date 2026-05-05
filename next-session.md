@@ -12,11 +12,13 @@ Architektur-Skelett + DB-Datenlese-Layer + Reconcile-Pipeline stehen
 
 ## Offene Punkte
 
-### 1. Engine-Feintuning anhand Q1 2026 Mismatches (8 Belege / 26 Mismatches)
+### 1. Marketplace-Facilitator-Severity in Reconcile auf `info` setzen
 
-- Auffälliges Muster: Engine sagt 0% VAT bei Belegen mit JTL=21% (CZ) / 22% (IT) — typischer DE→IT-Fall, der fälschlich als MARKETPLACE_FACILITATOR oder THIRD_COUNTRY klassifiziert wird.
-- CSV mit allen 26 Mismatches: `/tmp/q1-mismatches.csv` (vom letzten Reconcile-Run).
-- Plan: Engine-Logik prüfen (insbesondere die UK/CH-Marketplace-Facilitator-Regel — die könnte zu breit greifen), Tests ergänzen.
+Engine sagt 0% (Amazon kassiert UK/CH-VAT selbst), JTL speichert den Roh-VAT-Satz — das ist **kein Konflikt**, sondern erwartet. `core/reconcile.py` sollte für `treatment in {MARKETPLACE_FACILITATOR}` Mismatches mit severity=`info` produzieren statt `error`/`warn`.
+
+### 2. VIES-Online-Validierung der USt-IdNrn (später)
+
+Aktuell: Format-Plausibilitätscheck (`looks_like_valid_vat_id`). Echte VIES-API-Anbindung für definitive B2B-Klassifikation. Ergebnisse cachen.
 
 ### 2. Offene Annahmen aus `fetch_invoices`-Implementierung klären
 

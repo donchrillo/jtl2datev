@@ -10,9 +10,33 @@ EU_COUNTRIES: frozenset[str] = frozenset(
     }
 )
 
+# Country-prefixes accepted as plausible VAT-IDs. Includes EU + GB/NI/CH/XI variants.
+_VAT_ID_PREFIXES: frozenset[str] = EU_COUNTRIES | frozenset({"GB", "XI", "CH"})
+
 AMAZON_PLATFORM_NAMES: frozenset[str] = frozenset({"amazon"})
 
 _ZERO = Decimal("0")
+
+
+def looks_like_valid_vat_id(vat_id: str | None) -> bool:
+    """Format-only plausibility check (no VIES call).
+
+    Real validation requires VIES. Until that's wired up, we reject obviously
+    non-VAT strings like local tax/CIF numbers (e.g. Spanish 'B06800015') by
+    requiring the first two characters to be a known EU/UK/CH country code,
+    followed by at least two alphanumerics. Marketplaces sometimes pass
+    customer-supplied junk into this field; treating it blindly as B2B caused
+    Reverse-Charge misclassifications in production.
+    """
+    if not vat_id:
+        return False
+    cleaned = vat_id.strip().upper().replace(" ", "").replace("-", "")
+    if len(cleaned) < 4:
+        return False
+    prefix = cleaned[:2]
+    if prefix not in _VAT_ID_PREFIXES:
+        return False
+    return cleaned[2:].isalnum()
 
 
 def decide(
@@ -61,13 +85,17 @@ def decide(
 
     # Cross-border EU
     if wh in EU_COUNTRIES and dest in EU_COUNTRIES:
-        if vat_id:
+        if looks_like_valid_vat_id(vat_id):
             # B2B intra-community supply → Reverse Charge
             return TaxDecision(
                 treatment=TaxTreatment.IGL_B2B,
                 expected_vat_rate=_ZERO,
                 tax_country=wh,
                 notes=tuple(notes),
+            )
+        if vat_id:
+            notes.append(
+                f"customer vat_id '{vat_id}' has no recognised EU prefix — treating as B2C"
             )
         # B2C → OSS
         return TaxDecision(
