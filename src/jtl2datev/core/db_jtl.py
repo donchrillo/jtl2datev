@@ -76,6 +76,9 @@ WHERE r.nStorno = 0
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
+  -- Bundle/configurator children carry no price/VAT — skip; the master line carries the totals.
+  AND pos.kKonfigVaterRechnungPos IS NULL
+  AND pos.kStuecklisteRechnungPos IS NULL
 ORDER BY r.kRechnung, pos.nSort
 """)
 
@@ -129,6 +132,8 @@ WHERE ISNULL(eck.nIstStorniert, 0) = 0
   AND eb.dBelegdatumUtc >= :date_from
   AND eb.dBelegdatumUtc < :date_to_excl
   AND eb.nBelegtyp IN (0, 1, 2)
+  -- Bundle children carry no price/VAT.
+  AND ebp.kExternerBelegPositionVater IS NULL
 ORDER BY eb.kExternerBeleg, ebp.kExternerBelegPosition
 """)
 
@@ -181,6 +186,8 @@ WHERE g.nStorno = 0
   AND g.dErstellt >= :hard_min
   AND g.dErstellt >= :date_from
   AND g.dErstellt <  :date_to_excl
+  -- Bundle children carry no price/VAT (kGutschriftStueckliste != 0 means child).
+  AND pos.kGutschriftStueckliste = 0
 ORDER BY g.kGutschrift, pos.nSort
 """)
 

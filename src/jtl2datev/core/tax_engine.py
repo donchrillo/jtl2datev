@@ -117,8 +117,19 @@ def decide(
             f"warehouse_country '{wh}' not in own_vat_countries — verify registration"
         )
 
-    # 1) Domestic: warehouse == destination, regardless of vat_id.
+    # 1) Domestic: warehouse == destination.
     if wh == dest:
+        # Domestic B2B reverse-charge: marketplace booked 0% on a customer with
+        # a vat_id (e.g. Italian / Spanish national reverse charge). Mirror that
+        # decision instead of demanding the standard rate.
+        if line.vat_rate == _ZERO and cleaned_vat_id is not None:
+            return TaxDecision(
+                treatment=TaxTreatment.DOMESTIC,
+                expected_vat_rate=_ZERO,
+                tax_country=wh,
+                cleaned_vat_id=cleaned_vat_id,
+                notes=tuple(notes),
+            )
         return TaxDecision(
             treatment=TaxTreatment.DOMESTIC,
             expected_vat_rate=STANDARD_VAT_RATE.get(wh, line.vat_rate),
