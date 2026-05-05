@@ -28,7 +28,10 @@ def export_cmd(date_from: date, date_to: date, out_path: Path) -> None:
     import datetime as dt
 
     from jtl2datev.core.config import Settings
+    from jtl2datev.core.datev import write_extf_buchungsstapel
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.models import LineDecision
+    from jtl2datev.core.tax_engine import decide
 
     # click.DateTime returns datetime objects; core expects date
     df = date_from.date() if isinstance(date_from, dt.datetime) else date_from  # type: ignore[union-attr]
@@ -36,16 +39,31 @@ def export_cmd(date_from: date, date_to: date, out_path: Path) -> None:
 
     settings = Settings()
 
+    def decisions(inv):  # type: ignore[no-untyped-def]
+        return [
+            LineDecision(line=line, decision=decide(inv, line, own_vat_countries=settings.own_vat_countries))
+            for line in inv.lines
+        ]
+
     try:
         engine = make_engine(settings)
         repo = JtlInvoiceRepository(engine)
-        invoices = list(repo.fetch_invoices(date_from=df, date_to=dt_))
-        logging.info("fetched %d invoices", len(invoices))
-        click.echo(f"Fetched {len(invoices)} invoices — DATEV export not yet implemented")
-    except NotImplementedError as exc:
-        click.echo(f"Noch nicht implementiert: {exc} — siehe next-session.md")
+        invoices_iter = repo.fetch_invoices(date_from=df, date_to=dt_)
+        report = write_extf_buchungsstapel(
+            invoices_iter,
+            out_path=out_path,
+            settings=settings,
+            date_from=df,
+            date_to=dt_,
+            decisions_by_invoice=decisions,
+        )
+        click.echo(f"DATEV-Export geschrieben: {out_path}")
+        click.echo(f"  Buchungen: {report.bookings_written}")
+        click.echo(f"  Belege geskippt (Fehler):    {report.skipped_error}")
+        click.echo(f"  Belege geskippt (unbekannt): {report.skipped_unknown}")
     except Exception as exc:
-        click.echo(f"DB nicht erreichbar oder Fehler: {exc}")
+        click.echo(f"Fehler beim Export: {exc}")
+        raise SystemExit(1) from exc
 
 
 @main.command("reconcile")

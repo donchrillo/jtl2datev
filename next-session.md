@@ -2,52 +2,59 @@
 
 ## Status
 
-Architektur-Skelett + DB-Datenlese-Layer + Reconcile-Pipeline stehen
-(20 Tests grün, ruff/mypy clean). 3 DB-Quellen integriert
-(`Rechnung.tRechnung`, `tExternerBeleg`, `dbo.tgutschrift`). Engine ist
-99,94% deckungsgleich mit JTL (8 Mismatches in Q1 2026 / 13 619 Belegen).
-
-**Nächste Phasen:** (1) Engine-Feintuning anhand der Q1-Mismatches,
-(2) DATEV-Format-Spec + Konten-Mapping, (3) DATEV-CSV-Export.
+Datenleseschicht + Steuer-Engine + Reconcile + **DATEV-Export** stehen
+(73 Tests grün, ruff clean). Smoke gegen Jera-Sample März 2026:
+4823 Buchungen vs. 4807 (Δ +16). Konten-Verteilung sehr nah am Original
+(größte Abweichung 4001000 ist nun Δ +28 — vorher +995, Fix war
+EU→DE-OSS-Sonderfall).
 
 ## Offene Punkte
 
-### 1. Marketplace-Facilitator-Severity in Reconcile auf `info` setzen
+### 1. Kundenname / Adressdaten in `RawInvoice`
 
-Engine sagt 0% (Amazon kassiert UK/CH-VAT selbst), JTL speichert den Roh-VAT-Satz — das ist **kein Konflikt**, sondern erwartet. `core/reconcile.py` sollte für `treatment in {MARKETPLACE_FACILITATOR}` Mismatches mit severity=`info` produzieren statt `error`/`warn`.
+`PartyAddress` hat aktuell nur `country_iso`, `region`, `vat_id`. Für DATEV
+sollten Vorname + Nachname rein, damit Buchungstext und Beleginfo „Kundenname"
+gefüllt werden können. Anpassen:
+- `models.py`: `PartyAddress.first_name: str | None`, `last_name: str | None`, `company: str | None`
+- `db_jtl.py`: `cVorname`, `cName`, `cFirma` in den 3 SQL-Queries mitlesen + mappen
+- `datev.py`: Buchungstext-Format `f"{invoice.invoice_no} {bill_to.first_name or ''} {bill_to.last_name or ''}"`
 
-### 2. VIES-Online-Validierung der USt-IdNrn (später)
+### 2. GB-Lager-Edge-Cases (Engine)
 
-Aktuell: Format-Plausibilitätscheck (`looks_like_valid_vat_id`). Echte VIES-API-Anbindung für definitive B2B-Klassifikation. Ergebnisse cachen.
+Engine markiert `wh=GB, dest=EU` als UNKNOWN, weil `GB` nicht in `EU_COUNTRIES`.
+Jera bucht solche Fälle korrekt auf 4121000 (UK-Re-Export = Drittlandsausfuhr).
+~67 Belege im März 2026 betroffen. Fix:
+- Engine: GB-Lager-Sonderfall → wenn `wh=="GB"` und `dest != "GB"` → THIRD_COUNTRY-äquivalent
+- `rules.py` für THIRD_COUNTRY+wh=GB → 4121000 (passt schon)
 
-### 2. Offene Annahmen aus `fetch_invoices`-Implementierung klären
+### 3. DutyPay-Export
 
-- ~~`nTyp` 0/1~~: **bestätigt 2026-05-05** via `vRechnungLieferadresse`/`vRechnungRechnungsadresse`. `0` = Liefer, `1` = Rechnung.
-- ~~Gutschriften eigener Rechnungen~~: **implementiert 2026-05-05** als `_fetch_credit_notes()`, dritte Quelle. Q1 2026: 245 Belege.
-- **VAT-Berechnung `tExternerBelegPosition`**: Menge >1 → `vat_amount = brutto - netto` je Position (Annäherung; exakter wäre `Anzahl × (Brutto-Unit − Netto-Unit)`, in Amazon-Praxis typischerweise Gesamtpreise je Zeile).
+Separater Output für OSS-Bericht (DutyPay-Tool). Format-Sample liegt unter
+`samples/jera/DutyPay-Sale-2026-MAR.csv`. Kommt in `core/dutypay.py` als
+zweiter Writer; gleiche `RawInvoice`-Modelle, anderes Output-Format.
 
-### 2. DATEV-Format-Spezifikation — vollständig dokumentiert in `docs/datev-format.md`
+### 4. Marketplace-Facilitator Reconcile-Severity
 
-Sachkonten-Mapping vollständig aus `samples/jera/SachkontenZuordnung.csv`,
-Debitor-Mapping aus Screenshot. Bereit für Implementation `rules.py` + `datev.py`.
+`reconcile.py` sollte für `treatment == MARKETPLACE_FACILITATOR` Mismatches
+mit severity `info` produzieren (kein Konflikt — Amazon kassiert UK-VAT selbst,
+JTL speichert Roh-Wert).
 
-Offene Detail-Klärungen (klein):
-- GB-eigene UStID
-- Belegfeld 2 — Inhalt klären
+### 5. VIES-Online-Validierung (langfristig)
 
-### 3. Steuer-/Länder-Regeln verfeinern (`docs/tax-rules.md`)
+Aktuell: Format-Plausibilitätscheck (`looks_like_valid_vat_id`).
+Echte VIES-API-Anbindung mit Cache für definitive B2B-Klassifikation.
 
-- konkrete USt-Sätze + Sachkonten je Lagerland (DE/PL/CZ/FR/IT/ES/GB)
-- Marketplace-Facilitator-Erkennung UK/CH (Amazon-Plattform-IDs 53 für UK;
-  prüfen ob Beleg-Brutto = Netto bei Facilitator-Fällen)
-- USt-IdNr.-Validierung (VIES) — JTL-seitig nicht ersichtlich, eigene Logik nötig
-- Gutschriften-Konvention (`nBelegtyp=1` extern, `tRechnungKorrektur` eigene)
-
-### 4. Restliche kleinere DB-Klärungen (siehe `docs/db-schema.md` „Offene Punkte")
+### 6. Restliche DB-Klärungen
 
 - `nSteuereinstellung`-Werte 0/10/15/20: Bedeutung
-- `Rechnung.tRechnungKorrektur` — Spalten + Verknüpfung
+- `Rechnung.tRechnungKorrektur` — Spalten + Verknüpfung (für is_credit_note bei eigenen Belegen)
 - `Rechnung.tRechnungStorno` — Auswirkung auf Buchung
+- VAT-Berechnung `tExternerBelegPosition` mit Menge >1 (aktuell Annäherung)
+
+### 7. Steuer-/Länder-Regeln verfeinern (`docs/tax-rules.md`)
+
+- konkrete USt-Sätze + Sachkonten-Übersicht je Lagerland — größtenteils erledigt durch `rules.py`, aber Doku noch nicht synchronisiert
+- Belegfeld 2 — Inhalt klären (in Sample manchmal 8-stellige Zahl, vermutlich JTL-Auftrags-Key)
 
 ## Notizen für Orchestrator
 

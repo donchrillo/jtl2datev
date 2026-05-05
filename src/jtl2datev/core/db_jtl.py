@@ -29,6 +29,7 @@ SELECT
     r.cKundeUstId             AS customer_vat_id,
     r.kPlattform              AS platform_id,
     r.cExterneAuftragsnummer  AS external_order_no,
+    r.cZahlungsart            AS payment_method,
     r.kShop,
     -- cErloeskonto from dbo.tRechnung (complementary stub table)
     dr.cErloeskonto           AS revenue_account,
@@ -150,9 +151,10 @@ SELECT
     g.cKundeUstId              AS customer_vat_id,
     g.kPlattform               AS platform_id,
     g.cErloeskonto             AS revenue_account,
-    -- Lagerland + externe Auftragsnr aus Original-Rechnung
+    -- Lagerland + externe Auftragsnr + Zahlungsart aus Original-Rechnung
     r.cVersandlandISO          AS warehouse_country,
     r.cExterneAuftragsnummer   AS external_order_no,
+    r.cZahlungsart             AS payment_method,
     -- Platform name
     p.cName                    AS platform_name,
     -- Delivery address (nTyp=0) from tRechnungAdresse
@@ -302,6 +304,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     lines=tuple(lines),
                     jtl_revenue_account=first["revenue_account"] or None,
                     jtl_external_order_no=first["external_order_no"] or None,
+                    payment_method=first["payment_method"] or None,
                 )
                 yielded += 1
 
@@ -401,6 +404,8 @@ class JtlInvoiceRepository(InvoiceRepository):
                     lines=tuple(lines),
                     jtl_revenue_account=None,
                     jtl_external_order_no=first["external_order_no"] or None,
+                    # External belege are VCS (Amazon) — no cZahlungsart column; fix to Amazon
+                    payment_method="AmazonPayments",
                 )
                 yielded += 1
 
@@ -496,6 +501,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     lines=tuple(lines),
                     jtl_revenue_account=first["revenue_account"] or None,
                     jtl_external_order_no=first["external_order_no"] or None,
+                    payment_method=first["payment_method"] or None,
                 )
                 yielded += 1
 

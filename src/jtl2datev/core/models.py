@@ -51,6 +51,7 @@ class RawInvoice(BaseModel):
     lines: tuple[RawInvoiceLine, ...]
     jtl_revenue_account: str | None = None
     jtl_external_order_no: str | None = None
+    payment_method: str | None = None  # cZahlungsart for debitor account mapping
 
 
 class TaxTreatment(StrEnum):

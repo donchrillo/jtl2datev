@@ -2,6 +2,25 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-05 — DATEV-EXTF-Export funktionsfähig
+
+- `core/rules.py` mit Konten-Lookup-Algorithmus aus `docs/datev-format.md`
+  (DOMESTIC, OSS_B2C 240/241, IGL_B2B → 4125/4126/4001, MF→4328000,
+  EXPORT_LOCAL_VAT→4325000, Drittland 4120/4121).
+- `core/datev.py` mit EXTF-CSV-Writer: 124 Spalten, cp1252-Encoding,
+  CRLF, Komma-Dezimal, Belegdatum-Format `DDMM` (Tag ohne führende Null).
+- Settings erweitert: Mandant 14974 / Berater 10305 / WJ 2026-01-01 /
+  Account-Length 7 / `own_vat_ids` (DE/GB/FR/IT/PL/CZ/ES) / Default-Debitor 10000000.
+- `RawInvoice.payment_method` neues Feld; in den 3 DB-Pfaden befüllt
+  (eigen aus `cZahlungsart`, extern fix `AmazonPayments`, GS aus Original-Rechnung).
+- Debitor-Mapping nach Zahlungsart: 10001-10012, Default 10000000.
+- CLI `export --from --to --out` schreibt EXTF-Datei + Skip-Statistik.
+- 73 Tests grün, ruff clean.
+- **Smoke-Run März 2026:** 4823 Buchungen geschrieben (Jera: 4807, Δ +16).
+  Konten-Verteilung in den Top-Konten alle nah am Jera-Sample.
+  Größter Bug-Fix: EU→DE-OSS-Sonderfall (Konto 4001000 BU 285 statt
+  4320000 BU 241), reduzierte Δ von +995 auf +28.
+
 ## 2026-05-05 — Engine-Fix: VAT-ID-Format-Plausibilitätscheck
 
 - `looks_like_valid_vat_id()` Helper: erste 2 Zeichen müssen EU/GB/CH-Prefix sein, mind. 4 Zeichen, alphanumerisch danach. Volle VIES-Validierung kommt später.
