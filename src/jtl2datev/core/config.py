@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from pathlib import Path
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +32,8 @@ class Settings(BaseSettings):
     datev_wj_start: date = date(2026, 1, 1)
     datev_account_length: int = 7
     datev_default_debitor: int = 10000000
+
+    export_archive_root: Path = Path("exports")
 
     own_vat_countries: frozenset[str] = _DEFAULT_OWN_VAT_COUNTRIES
     own_vat_ids: dict[str, str] = _DEFAULT_OWN_VAT_IDS

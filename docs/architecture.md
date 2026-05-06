@@ -21,9 +21,9 @@
 | Modul | Status | Verantwortung |
 |---|---|---|
 | `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids |
-| `core/models.py` | ✓ | RawInvoice, RawInvoiceLine, PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
+| `core/models.py` | ✓ | RawInvoice, RawInvoiceLine (synthetisch mit Header-Aggregaten), PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
 | `core/repositories.py` | ✓ | Abstrakte Interfaces: InvoiceRepository |
-| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. `fetch_invoices()` mit `_fetch_own()` (eBay/Kaufland/Otto/JTL-manuell) + `_fetch_external()` (nur Amazon-VCS) + `_fetch_credit_notes()` (Streaming-Cursor). Bundle-Self-Ref-Filter, Storno-Vollständigkeit (alle Storno-Flags bleiben drin — Gegenstück Gutschrift muss mitgelesen werden), Temu-Filter (`PO%`), VCS-IDU-Belege berücksichtigt. |
+| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. SQL-Queries lesen Brutto/Netto direkt aus Eckdaten-Tabellen. `fetch_invoices()` mit `_fetch_own()` (eBay/Kaufland/Otto/JTL-manuell; nutzt `tRechnungEckdaten`) + `_fetch_external()` (nur Amazon-VCS; nutzt `tExternerBelegEckdaten`) + `_fetch_credit_notes()` (nutzt `vGutschriftEckdaten`). Helper `derive_vat_rate(gross, net)` leitet Steuersatz ab mit Snap auf Standard-Rate (±0,5 pp Toleranz). Jede `RawInvoice` hat exakt eine `RawInvoiceLine` mit Header-Beträgen. |
 | `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten → TaxTreatment (DOMESTIC / OSS_B2C / IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR). VAT-ID-Format-Plausibilität, GB-Sonderfall. |
 | `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
 | `core/reconcile.py` | ✓ | Plausi-Check: JTL-gespeichert vs. Engine. ReconcileMismatch-Report mit Severity (error/warning/info). Mismatch-CSV-Export. |
@@ -32,18 +32,24 @@
 
 Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 
-## Datenfluss (Stand 2026-05-05, revidiert)
+## Datenfluss (Stand 2026-05-06, Header-Eckdaten-Umstellung)
 
 ```
 JTL-MSSQL
- ├─ dbo.tRechnung + tRechnungPosition          ┐  Repository
- │  (eBay, Kaufland, Otto, JTL-manuell, vor    │  liest ROHFAKTEN
- │   2024-11-01 auch Amazon)                   │  (Lager, Lieferland,
- ├─ Rechnung.tExternerBeleg* (NUR Amazon-VCS)  │   Beträge, USt-IdNr.,
- └─ JTL-eigener Steuerschluessel/Erloeskonto   │   Plattform, Sätze)
-    (mitgelesen als Referenz)                  │  ←──── Otto NICHT hier!
+ ├─ Rechnung.tRechnung + tRechnungEckdaten    ┐  Repository
+ │  + tRechnungAdresse (eBay, Kaufland,       │  liest ROHFAKTEN
+ │   Otto, JTL-manuell)                       │  direkt aus Eckdaten:
+ ├─ Rechnung.tExternerBeleg* + Eckdaten       │  Brutto/Netto-Header,
+ │  (NUR Amazon-VCS)                          │  Lager, Lieferland,
+ ├─ dbo.vGutschriftEckdaten + tgutschrift     │  USt-IdNr., Plattform
+ │  (Gutschriften/Korrekturen)                │  (Position-Joins
+ └─ JTL-Steuerschluessel/Erloeskonto          │   entfallen für Beträge)
+    (mitgelesen als Referenz)                 │
                                                ▼
-                                core/models.py  (RawInvoice — neutral)
+                                core/models.py
+                                  RawInvoice mit synth. Single-Line
+                                  (1 RawInvoiceLine mit Header-Beträgen
+                                   + abgeleiteter VAT-Rate)
                                                │
                                                ▼
                                 core/tax_engine.py
@@ -60,7 +66,7 @@ JTL-MSSQL
                                                 USt-Schlüssel-Mapping)
                                                │
                                                ▼
-                                core/datev.py  (EXTF-CSV)
+                                core/datev.py + core/dutypay.py  (EXTF/DutyPay-CSV)
 ```
 
 ### Steuer-Engine: Eingaben

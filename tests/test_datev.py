@@ -507,3 +507,40 @@ class TestBuchungstextWithCustomerName:
         inv = _invoice(invoice_no="R-DE-249030238-2026-322", bill_to=addr)
         rows = self._get_data_rows([inv])
         assert len(rows[0][13]) <= 60
+
+
+class TestTemuFilter:
+    """Temu belege (external_order_no starts with 'PO') must be excluded from DATEV export."""
+
+    def _write(self, invoices: list[RawInvoice]) -> ExportReport:
+        settings = _settings()
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            out = Path(tmp.name)
+        report = write_extf_buchungsstapel(
+            iter(invoices),
+            out_path=out,
+            settings=settings,
+            date_from=date(2026, 1, 1),
+            date_to=date(2026, 1, 31),
+            decisions_by_invoice=_decisions,
+        )
+        out.unlink()
+        return report
+
+    def test_temu_beleg_excluded_from_datev(self) -> None:
+        temu = _invoice(invoice_no="R-DE-249030238-2025-9999", external_order_no="PO-123456789")
+        report = self._write([temu])
+        assert report.bookings_written == 0, "Temu beleg must be filtered out of DATEV export"
+
+    def test_non_temu_beleg_not_excluded(self) -> None:
+        normal = _invoice(invoice_no="R-DE-2026-001", external_order_no="404-5433421-0313123")
+        report = self._write([normal])
+        assert report.bookings_written >= 1, "Normal beleg must not be filtered out"
+
+    def test_temu_excluded_normal_kept_mixed(self) -> None:
+        temu = _invoice(invoice_no="R-DE-2025-TEMU", external_order_no="PO-987654321")
+        normal = _invoice(invoice_no="R-DE-2026-002", external_order_no="404-9999999-1234567")
+        report = self._write([temu, normal])
+        assert report.bookings_written >= 1, "Normal beleg must appear despite Temu sibling"
+        # bookings_written reflects only the non-Temu invoice
+        assert report.bookings_written < 3, "Temu beleg rows must not be counted"

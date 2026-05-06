@@ -373,6 +373,14 @@ def write_extf_buchungsstapel(
         writer = csv.writer(fh, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
 
         for invoice in invoices:
+            # Temu pilot (late 2025) was rolled back. The imported orders carry
+            # external order IDs starting with "PO-". They must not appear in
+            # the DATEV export. DutyPay intentionally keeps them (DE→DE B2C).
+            ext_no = invoice.jtl_external_order_no or ""
+            if ext_no.startswith("PO"):
+                logger.debug("DATEV export: skipping Temu beleg %s (%s)", invoice.invoice_no, ext_no)
+                continue
+
             line_decisions = decisions_by_invoice(invoice)
 
             debitor = map_to_debitor_account(

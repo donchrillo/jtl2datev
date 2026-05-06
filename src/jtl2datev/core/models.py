@@ -17,6 +17,11 @@ class PartyAddress(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     company: str | None = None
+    zip_code: str | None = None
+    city: str | None = None
+    street: str | None = None
+    house_number: str | None = None
+    additional_address: str | None = None
 
     def display_name(self) -> str:
         """Single-line name for DATEV Buchungstext.
@@ -45,6 +50,14 @@ class RawInvoiceLine(BaseModel):
     product_group_id: int | None = None
     position_type: int | None = None
     jtl_tax_key_id: int | None = None  # reference only, nullable
+    # Article master fields — populated when available, left None otherwise
+    weight: Decimal | None = None
+    manufacturer: str | None = None
+    manufacturer_country: str | None = None  # ISO-2
+    commodity_code: str | None = None  # HS/HTS code
+    long_description: str | None = None  # cText / longer item description
+    unit: str | None = None  # cEinheit
+    transport_code: int | None = None  # kVersandArt
 
 
 class RawInvoice(BaseModel):

@@ -96,6 +96,257 @@ def export_cmd(
         raise SystemExit(1) from exc
 
 
+def _parse_month(month_str: str) -> tuple[int, int]:
+    """Parse 'YYYY-MM' and return (year, month). Raises SystemExit on bad input."""
+    try:
+        year_s, month_s = month_str.split("-")
+        return int(year_s), int(month_s)
+    except ValueError:
+        click.echo(f"Ungültiges Monatsformat: {month_str!r}. Erwartet: YYYY-MM")
+        raise SystemExit(1)
+
+
+def _month_date_range(year: int, month: int) -> "tuple":
+    import datetime as _dt
+
+    date_from = _dt.date(year, month, 1)
+    if month == 12:
+        date_to_excl = _dt.date(year + 1, 1, 1)
+    else:
+        date_to_excl = _dt.date(year, month + 1, 1)
+    return date_from, date_to_excl - _dt.timedelta(days=1)
+
+
+@main.command("export-dutypay")
+@click.option(
+    "--month",
+    "month_str",
+    required=True,
+    metavar="YYYY-MM",
+    help="Monat des Exports, z.B. 2026-01.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    required=False,
+    default=None,
+    type=click.Path(path_type=Path),
+    help="Optionaler zusätzlicher Ausgabepfad (neben der automatischen Archivierung).",
+)
+def export_dutypay_cmd(month_str: str, out_path: Path | None) -> None:
+    """Exportiert Rechnungen aus JTL als DutyPay OSS-CSV (+ automatische Archivierung)."""
+    import tempfile
+
+    from jtl2datev.core.archive import archive_export
+    from jtl2datev.core.config import Settings
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.dutypay import dutypay_filename, write_dutypay_csv
+
+    year, month = _parse_month(month_str)
+    date_from, date_to_incl = _month_date_range(year, month)
+    settings = Settings()
+
+    # Write to a temp file first, then archive + optional copy to --out.
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+
+    try:
+        engine = make_engine(settings)
+        repo = JtlInvoiceRepository(engine)
+        invoices_iter = repo.fetch_invoices(date_from=date_from, date_to=date_to_incl)
+        report = write_dutypay_csv(
+            invoices_iter,
+            out_path=tmp_path,
+            own_vat_ids=settings.own_vat_ids,
+        )
+
+        archived = archive_export(
+            tmp_path,
+            archive_root=settings.export_archive_root,
+            kind="dutypay",
+            period=month_str,
+        )
+        click.echo(f"DutyPay-Export archiviert: {archived}")
+
+        if out_path is not None:
+            resolved = Path(out_path)
+            if resolved.is_dir():
+                resolved = resolved / dutypay_filename(year, month)
+            import shutil
+            shutil.copy2(tmp_path, resolved)
+            click.echo(f"DutyPay-Export geschrieben: {resolved}")
+
+        click.echo(f"  Zeilen: {report.rows_written}")
+        click.echo(f"  Belege: {report.invoices_processed}")
+        for kind, cnt in sorted(report.kind_counts.items()):
+            click.echo(f"    {kind}: {cnt}")
+    except Exception as exc:
+        click.echo(f"Fehler beim DutyPay-Export: {exc}")
+        raise SystemExit(1) from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@main.command("export-dutypay-delta")
+@click.option(
+    "--month",
+    "month_str",
+    required=True,
+    metavar="YYYY-MM",
+    help="Monat, für den das Delta berechnet wird.",
+)
+@click.option(
+    "--baseline",
+    "baseline_path",
+    required=False,
+    default=None,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Explizite Baseline-Datei (Standard: letzter archivierter Vollexport für den Monat).",
+)
+@click.option(
+    "--shift-to-period",
+    "shift_to_period",
+    required=False,
+    default=None,
+    metavar="YYYY-MM",
+    help="Überschreibt ReportingPeriod und Datumsfelder in der Delta-CSV für Folgemonats-Nachmeldung.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    required=False,
+    default=None,
+    type=click.Path(path_type=Path),
+    help="Optionaler zusätzlicher Pfad für die Delta-CSV.",
+)
+def export_dutypay_delta_cmd(
+    month_str: str,
+    baseline_path: Path | None,
+    shift_to_period: str | None,
+    out_path: Path | None,
+) -> None:
+    """Berechnet Delta-Export zwischen aktuellem JTL-Stand und letztem Vollexport."""
+    import shutil
+    import tempfile
+
+    from jtl2datev.core.archive import archive_delta, archive_export, latest_archive
+    from jtl2datev.core.config import Settings
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.dutypay import DUTYPAY_COLUMNS, write_dutypay_csv
+    from jtl2datev.core.dutypay_delta import (
+        NoBaselineError,
+        compute_delta,
+        load_baseline,
+        write_delta_csv,
+    )
+
+    year, month = _parse_month(month_str)
+    date_from, date_to_incl = _month_date_range(year, month)
+    settings = Settings()
+
+    # Resolve baseline
+    if baseline_path is not None:
+        effective_baseline = baseline_path
+    else:
+        effective_baseline = latest_archive(
+            settings.export_archive_root,
+            kind="dutypay",
+            period=month_str,
+        )
+        if effective_baseline is None:
+            click.echo(
+                f"Keine Baseline-Datei gefunden — erst Vollexport laufen lassen: "
+                f"jtl2datev export-dutypay --month {month_str}"
+            )
+            raise SystemExit(1)
+
+    click.echo(f"Baseline: {effective_baseline}")
+    baseline_rows = load_baseline(effective_baseline)
+
+    # Fresh full export into temp file
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        current_tmp = Path(tmp.name)
+
+    try:
+        engine = make_engine(settings)
+        repo = JtlInvoiceRepository(engine)
+        invoices_iter = repo.fetch_invoices(date_from=date_from, date_to=date_to_incl)
+        write_dutypay_csv(
+            invoices_iter,
+            out_path=current_tmp,
+            own_vat_ids=settings.own_vat_ids,
+        )
+
+        # Archive the fresh full export so next delta can use it as baseline
+        archived_full = archive_export(
+            current_tmp,
+            archive_root=settings.export_archive_root,
+            kind="dutypay",
+            period=month_str,
+        )
+        click.echo(f"Frischer Vollexport archiviert: {archived_full}")
+
+        # Load current rows for diff
+        import csv as csv_mod
+
+        with current_tmp.open(encoding="utf-8", newline="") as fh:
+            reader = csv_mod.DictReader(fh, delimiter=";")
+            current_rows = list(reader)
+
+        delta_rows, new_ids, changed_ids = compute_delta(
+            current_rows=current_rows,
+            baseline_rows=baseline_rows,
+            key_col="DocumentID",
+        )
+
+        click.echo(f"Delta: {len(new_ids)} neue Belege, {len(changed_ids)} geänderte Belege")
+        if changed_ids:
+            for doc_id in changed_ids:
+                click.echo(f"  Geändert: {doc_id}")
+
+        # Parse shift-to-period if given
+        shift_tuple: tuple[int, int] | None = None
+        if shift_to_period is not None:
+            shift_year, shift_month = _parse_month(shift_to_period)
+            shift_tuple = (shift_year, shift_month)
+
+        # Write delta to temp file, then archive + optional copy
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp2:
+            delta_tmp = Path(tmp2.name)
+
+        try:
+            write_delta_csv(
+                delta_rows,
+                out_path=delta_tmp,
+                fieldnames=list(DUTYPAY_COLUMNS),
+                shift_to_period=shift_tuple,
+            )
+
+            archived_delta = archive_delta(
+                delta_tmp,
+                archive_root=settings.export_archive_root,
+                kind="dutypay",
+                period=month_str,
+            )
+            click.echo(f"Delta archiviert: {archived_delta}")
+
+            if out_path is not None:
+                shutil.copy2(delta_tmp, out_path)
+                click.echo(f"Delta geschrieben: {out_path}")
+
+        finally:
+            delta_tmp.unlink(missing_ok=True)
+
+    except NoBaselineError as exc:
+        click.echo(str(exc))
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        click.echo(f"Fehler beim Delta-Export: {exc}")
+        raise SystemExit(1) from exc
+    finally:
+        current_tmp.unlink(missing_ok=True)
+
+
 @main.command("reconcile")
 @click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
 @click.option("--to", "date_to", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))

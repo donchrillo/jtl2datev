@@ -1,4 +1,4 @@
-"""Tests for JtlInvoiceRepository.
+"""Tests for JtlInvoiceRepository and db_jtl helpers.
 
 Integration tests require a live DB (credentials in .env) and are marked
 with @pytest.mark.integration. They are skipped automatically when the DB
@@ -7,8 +7,50 @@ is not reachable or .env is missing credentials.
 
 import os
 from datetime import date
+from decimal import Decimal
 
 import pytest
+
+from jtl2datev.core.db_jtl import derive_vat_rate
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for derive_vat_rate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "gross, net, expected",
+    [
+        # Standard DE 19 %
+        (Decimal("119"), Decimal("100"), Decimal("19")),
+        # Standard AT/FR 20 %
+        (Decimal("120"), Decimal("100"), Decimal("20")),
+        # DE reduced 7 %
+        (Decimal("107"), Decimal("100"), Decimal("7")),
+        # IE/PL/PT/SK 23 %
+        (Decimal("123"), Decimal("100"), Decimal("23")),
+        # B2B Reverse-Charge: gross == net → 0 %
+        (Decimal("100"), Decimal("100"), Decimal("0")),
+        # Export zero-rated: gross == net
+        (Decimal("49.99"), Decimal("49.99"), Decimal("0")),
+        # net == 0 edge case
+        (Decimal("0"), Decimal("0"), Decimal("0")),
+        # Amazon refund: negative amounts stay sign-consistent
+        (Decimal("-119"), Decimal("-100"), Decimal("19")),
+        # Rounding drift within 0.5 pp — should snap to 19
+        (Decimal("119.05"), Decimal("100"), Decimal("19")),
+        # "Weird" rate 18.5 % — no known rate within 0.5 pp → raw value returned
+        (Decimal("118.5"), Decimal("100"), Decimal("18.50")),
+        # CH 8.1 %
+        (Decimal("108.10"), Decimal("100"), Decimal("8.1")),
+        # HU 27 %
+        (Decimal("127"), Decimal("100"), Decimal("27")),
+    ],
+)
+def test_derive_vat_rate(gross: Decimal, net: Decimal, expected: Decimal) -> None:
+    assert derive_vat_rate(gross, net) == expected
+
 
 # ---------------------------------------------------------------------------
 # Integration smoke test — hits the real JTL DB

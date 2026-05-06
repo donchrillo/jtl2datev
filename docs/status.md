@@ -2,6 +2,47 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-06 — Repository-Umstellung auf Header-Eckdaten
+
+**Was:** SQL-Queries in `core/db_jtl.py` (`_SQL_OWN`, `_SQL_EXTERNAL`, `_SQL_CREDIT_NOTES`) lesen Brutto/Netto direkt aus den Eckdaten-Tabellen / -View; Position-Joins entfallen. Pro Beleg wird eine synthetische Single-Line mit Header-Werten + abgeleiteter VAT-Rate erzeugt.
+
+**Bug gefixt:** Versandkosten externer Amazon-Belege (Typ 0 mit Positions-Details) wurden vorher fälschlich gefiltert, weil der `kExternerBelegPositionVater IS NULL`-Filter sie mit echten Bundle-Children rauswarf. Header-Total ist die garantierte Wahrheit (100% Coverage, 100% Match Σ Pos).
+
+**Filter-Korrektionen:** `nIstExterneRechnung=0` aus `_SQL_OWN` wieder entfernt (war versehentlich neu hinzugefügt). Temu-Filter (`cExterneAuftragsnummer NOT LIKE 'PO%'`) explizit auch im `_SQL_OWN`.
+
+**Format-Fix:** `_vat_rate_str` in `dutypay.py` gibt für ganze Zahlen jetzt `'20'` statt `'2E+1'`.
+
+**Verifikation Q1 2026:**
+- MAR-Engine vs. Jera Δ −0,03 € über 4807 Belege.
+- JAN/FEB Δ −1908 €/−429 € (Engine-vs-Jera-Drift wie zuvor dokumentiert, nicht durch Umstellung neu eingeführt).
+
+**Tests:** 177 passed, 3 skipped. ruff clean.
+
+**Folge-Items:** Mixed-VAT-Pre-Flight-Check; RawInvoiceLine-Modell-Cleanup.
+
+---
+
+## 2026-05-06 — DutyPay-Export produktionsreif + Archiv/Delta-Workflow
+
+**Core-Deliverables:**
+- `core/dutypay.py` Exporter (98 Spalten DATEV-Spec), `core/dutypay_delta.py` für Diff-Logik, `core/archive.py` generischer Archiv-Helfer.
+- `export-dutypay` + `export-dutypay-delta` CLI-Commands; automatische Archivierung unter `exports/dutypay/<YYYY-MM>/`.
+- Delta-Diff vergleicht JTL-Stand gegen letzten Archiv-Stand; `--shift-to-period YYYY-MM` für Datums-Umschreibung (OSS-Nachzüglers).
+- 163 Tests grün, ruff/mypy clean.
+
+**Spec & Validierung:**
+- `docs/dutypay-format.md`: 98-Spalten-Referenz, KindOfBusiness-Entscheidungstabelle, abgeleitete Felder (TAX_REPORTING_SCHEME, TAX_COLLECTION_RESPONSIBILITY, Incoterms, MarketZone), Vorzeichen-Regel, OSS-Pflichtfeld-Matrix.
+- Refund-Vorzeichen (REFUND/B2B-REFUND/EXPORT-REFUND → negative Beträge) verifiziert.
+- TransportCode konstant `5` (Jera-Default v1), TransactionID = JTL-Belegnummer.
+
+**DB & Models:**
+- `core/models.py` erweitert (Adress- + Artikelstamm-Felder optional).
+- `core/db_jtl.py` SQL-Queries angepasst (Adress-Spalten gemäß JTL-Schema; Temu-Filter aus SQL entfernt — DutyPay enthält Temu-Belege wieder, jera-deckungsgleich, OSS-irrelevant).
+- Settings: `export_archive_root: Path = Path("exports")` (via `.env` überschreibbar).
+
+**Q1 2026 Validierung gegen Jera:**
+- Engine-Output ist Obermenge: alle Jera-Belege enthalten, plus nach Jera-Export entstandene Belege, plus Temu-Belege jera-deckungsgleich.
+
 > **Korrektur 2026-05-06 (geltende Regeln, überschreiben ältere Einträge unten):**
 > - **Storno-Filter überall entfernt.** `nStorno`/`nIstStorniert`/„Storno"-Flags
 >   in *jeder* Tabelle (eigene Rechnungen, externe Belege, Gutschriften) werden

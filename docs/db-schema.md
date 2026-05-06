@@ -94,6 +94,20 @@ Tatsächlich:
 
 PK `kRechnung` ist in beiden gleich (1:1), aber Inhalte komplementär.
 
+## Eckdaten-Tabellen — primäre Quelle für Beträge
+
+| Quelle | Eckdaten-Tabelle | Brutto-Spalte | Netto-Spalte |
+|---|---|---|---|
+| Eigene Rechnungen | `Rechnung.tRechnungEckdaten` | `fVkBruttoGesamt` | `fVkNettoGesamt` |
+| Externe Belege | `Rechnung.tExternerBelegEckdaten` | `fVkBrutto` | `fVkNetto` |
+| Gutschriften | `dbo.vGutschriftEckdaten` (View) | `fPreisBrutto` | `fPreisNetto` |
+
+**Coverage Q1 2026 (2026-05-06):**
+- Eigenrechnungen: 273/273 Gutschriften haben `vGutschriftEckdaten`-Eintrag (100%), Header == Σ Positionen in 273/273 Fällen.
+- Externe Belege: 12.287/12.287 (100%), alle nBelegtyp (0=B2C, 1=Gutschrift, 2=B2B-Restposten) vollständig.
+
+**Konsequenz:** Position-Joins für Brutto/Netto nicht mehr erforderlich. Jeder Beleg hat exakt eine Header-Zeile mit Eckdaten.
+
 ### Basistabelle `Rechnung.tRechnung` (47 Spalten — Header eigener + externer Rechnungen)
 
 Alle Routing-Discriminatoren liegen hier:
@@ -162,8 +176,8 @@ Tabelle, in der nur Amazon liegt, ist `Rechnung.tExternerBeleg`.
 | Spalte                | Typ      | Bedeutung                                    |
 |-----------------------|----------|----------------------------------------------|
 | `kRechnung` (PK)      | int      |                                              |
-| `fVkBruttoGesamt`     | decimal  | Brutto Gesamtbeleg                           |
-| `fVkNettoGesamt`      | decimal  | Netto Gesamtbeleg                            |
+| `fVkBruttoGesamt`     | decimal  | **Brutto Gesamtbeleg** (primäre Quelle)    |
+| `fVkNettoGesamt`      | decimal  | **Netto Gesamtbeleg** (primäre Quelle)    |
 | `fOffenerWert`        | decimal  |                                              |
 | `fZahlung`            | decimal  | bereits gezahlt                              |
 | `fGutschrift`         | decimal  |                                              |
@@ -175,7 +189,7 @@ Tabelle, in der nur Amazon liegt, ist `Rechnung.tExternerBeleg`.
 | `cAuftragsnummern`    | nvarchar(200) | Komma-Liste der Quell-Aufträge          |
 | `nHasRechnungskorrektur` / `nKorrigiert` | bit |                                          |
 
-→ **Hier holen wir Brutto/Netto-Summen, nicht aus `tRechnung`.**
+→ **Brutto/Netto-Summen hier holen, nicht aus `tRechnung` oder Position-Aggregaten.** (seit 2026-05-06)
 
 ### Adressen: `Rechnung.tRechnungAdresse` (n:1, je Rechnung typisch 2 Zeilen)
 
@@ -277,8 +291,8 @@ Welten** mit getrenntem Schlüsselraum (`kRechnung` vs. `kExternerBeleg`).
 | Spalte             | Typ          | Bedeutung                                |
 |--------------------|--------------|------------------------------------------|
 | `kExternerBeleg`   | int (PK)     |                                          |
-| `fVkBrutto`        | decimal      | Brutto gesamt (negativ bei Gutschrift)  |
-| `fVkNetto`         | decimal      | Netto gesamt                             |
+| `fVkBrutto`        | decimal      | **Brutto gesamt** (negativ bei Gutschrift, primäre Quelle) |
+| `fVkNetto`         | decimal      | **Netto gesamt** (primäre Quelle)        |
 | `nIstStorniert`    | bit          |                                          |
 | `nFehlercode`      | int          | 0 = ok                                   |
 
