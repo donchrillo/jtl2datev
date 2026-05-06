@@ -78,9 +78,10 @@ JOIN Rechnung.tRechnungPosition pos
     ON pos.kRechnung = r.kRechnung
 LEFT JOIN Rechnung.tRechnungPositionEckdaten poseck
     ON poseck.kRechnungPosition = pos.kRechnungPosition
-WHERE r.nStorno = 0
-  AND r.nIstEntwurf = 0
+WHERE r.nIstEntwurf = 0
   AND r.nIstProforma = 0
+  -- nStorno=1 stays in: a stornierte Rechnung implies a counter-credit-note
+  -- exists/must exist, and we need both halves for an auditable export.
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
@@ -212,8 +213,8 @@ LEFT JOIN Rechnung.tRechnungAdresse bill
     ON bill.kRechnung = g.kRechnung AND bill.nTyp = 1
 JOIN dbo.tGutschriftPos pos
     ON pos.tGutschrift_kGutschrift = g.kGutschrift
-WHERE g.nStorno = 0
-  AND g.kRechnung IS NOT NULL
+WHERE g.kRechnung IS NOT NULL
+  -- nStorno=1 stays in (audit-trail completeness — see _fetch_own).
   AND g.dErstellt >= :hard_min
   AND g.dErstellt >= :date_from
   AND g.dErstellt <  :date_to_excl

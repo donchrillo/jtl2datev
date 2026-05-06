@@ -23,7 +23,7 @@
 | `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids |
 | `core/models.py` | ✓ | RawInvoice, RawInvoiceLine, PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
 | `core/repositories.py` | ✓ | Abstrakte Interfaces: InvoiceRepository |
-| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. `fetch_invoices()` mit `_fetch_own()` + `_fetch_external()` + `_fetch_credit_notes()` (Streaming-Cursor). Bundle-Self-Ref-Filter, Storno-Vollständigkeit, Temu-Filter (`PO%`), VCS-IDU-Belege berücksichtigt. |
+| `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. `fetch_invoices()` mit `_fetch_own()` (eBay/Kaufland/Otto/JTL-manuell) + `_fetch_external()` (nur Amazon-VCS) + `_fetch_credit_notes()` (Streaming-Cursor). Bundle-Self-Ref-Filter, Storno-Vollständigkeit (alle Storno-Flags bleiben drin — Gegenstück Gutschrift muss mitgelesen werden), Temu-Filter (`PO%`), VCS-IDU-Belege berücksichtigt. |
 | `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten → TaxTreatment (DOMESTIC / OSS_B2C / IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR). VAT-ID-Format-Plausibilität, GB-Sonderfall. |
 | `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
 | `core/reconcile.py` | ✓ | Plausi-Check: JTL-gespeichert vs. Engine. ReconcileMismatch-Report mit Severity (error/warning/info). Mismatch-CSV-Export. |
@@ -37,10 +37,11 @@ Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 ```
 JTL-MSSQL
  ├─ dbo.tRechnung + tRechnungPosition          ┐  Repository
- ├─ Rechnung.tExternerBeleg* (Amazon/Otto)     │  liest ROHFAKTEN
- └─ JTL-eigener Steuerschluessel/Erloeskonto   │  (Lager, Lieferland,
-    (mitgelesen als Referenz)                  │   Beträge, USt-IdNr.,
-                                               │   Plattform, Sätze)
+ │  (eBay, Kaufland, Otto, JTL-manuell, vor    │  liest ROHFAKTEN
+ │   2024-11-01 auch Amazon)                   │  (Lager, Lieferland,
+ ├─ Rechnung.tExternerBeleg* (NUR Amazon-VCS)  │   Beträge, USt-IdNr.,
+ └─ JTL-eigener Steuerschluessel/Erloeskonto   │   Plattform, Sätze)
+    (mitgelesen als Referenz)                  │  ←──── Otto NICHT hier!
                                                ▼
                                 core/models.py  (RawInvoice — neutral)
                                                │
@@ -94,8 +95,9 @@ Die Engine bekommt nur Fakten, **nie** JTLs Steuerentscheidung als Input
 
 | Quelle             | JTL-Daten                                          |
 |--------------------|----------------------------------------------------|
-| eBay, Kaufland     | `dbo.tRechnung` (eigene), `nIstExterneRechnung=0` |
-| Amazon, Otto       | externe Belege — TBD: `tRechnung.nIstExterneRechnung=1` ODER `tExternerBeleg*`. Beziehung muss noch geklärt werden. |
+| eBay, Kaufland, Otto, JTL-manuell | `Rechnung.tRechnung` — `_fetch_own()`. Otto liegt **nicht** in `tExternerBeleg`, sondern wie alle anderen Eigen-Belege in `tRechnung`. |
+| Amazon (ab 2024-11-01) | `Rechnung.tExternerBeleg*` (VCS-Import) — `_fetch_external()`. **Nur Amazon** landet hier. |
+| Amazon (vor 2024-11-01 / manuell korrigiert) | `Rechnung.tRechnung` — `_fetch_own()` (Sonderfälle, `cZahlungsart='AmazonPayments'`) |
 | TEMU               | **außerhalb dieses Tools**                         |
 
 ## Was noch offen ist

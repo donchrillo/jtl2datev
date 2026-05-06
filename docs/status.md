@@ -2,6 +2,17 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+> **Korrektur 2026-05-06 (geltende Regeln, überschreiben ältere Einträge unten):**
+> - **Storno-Filter überall entfernt.** `nStorno`/`nIstStorniert`/„Storno"-Flags
+>   in *jeder* Tabelle (eigene Rechnungen, externe Belege, Gutschriften) werden
+>   **nicht** als Skip-Kriterium verwendet. Begründung: Eine stornierte Rechnung
+>   hat zwingend ein Gutschriftsdokument (oder muss eines haben); ohne den
+>   Storno-Beleg fehlte die Gegenbuchung.
+> - **Otto liegt nicht in `tExternerBeleg`.** `Rechnung.tExternerBeleg` enthält
+>   ausschließlich Amazon-VCS-Belege. Otto/eBay/Kaufland/JTL-manuell laufen
+>   alle über `Rechnung.tRechnung` (`_fetch_own`). Ältere Status-Einträge, die
+>   „Amazon/Otto" zusammen unter „externe Belege" zählen, sind insoweit falsch.
+
 ## 2026-05-05 — DATEV-Export-Sprint: Jera-Konventionen, Audit-Modus, 4-Monatsabgleich
 
 **Vergleich Engine vs. Jera März 2026:**

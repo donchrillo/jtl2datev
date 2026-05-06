@@ -47,7 +47,7 @@ gekapselt. **Wir lesen primär aus Views**, nicht aus Basistabellen.
 | `Amazon.vBuchhaltungsuebersichtAuftragPosition`   |                                                                 |
 | `Amazon.vBuchhaltungsuebersichtGutschrift`        | Amazon-Gutschriften                                             |
 | `Amazon.vBuchhaltungsuebersichtGutschriftPosition`|                                                                 |
-| `Rechnung.vExternerBelegSteuerermittlungsdaten`   | **Externe Rechnungen** (Amazon/Otto) — Steuerermittlung; Basisdaten in `Rechnung.tExternerBeleg*` |
+| `Rechnung.vExternerBelegSteuerermittlungsdaten`   | **Externe Rechnungen** (nur Amazon-VCS) — Steuerermittlung; Basisdaten in `Rechnung.tExternerBeleg*` |
 | `Rechnung.vRechnung*`                             | Rechnungs-Detail-Views (Adresse, Position, Eckdaten, …)         |
 | `Verkauf.vRechnungskorrekturposition`             | **Gutschriften = Rechnungskorrektur** (JTL-2.0-Bezeichnung)     |
 | `Statistik.vGutschrift` / `vGutschriftPos`        | Alternative Gutschrift-Sicht                                    |
@@ -132,7 +132,13 @@ Alle Routing-Discriminatoren liegen hier:
 | `nExistierendeRechnungDrucken`      | bit            |                                                    |
 | `bRowversion`                       | timestamp      | optimistic locking                                 |
 
-**Filter aktive Belege:** `WHERE nStorno=0 AND nIstEntwurf=0 AND nIstProforma=0`
+**Filter aktive Belege:** `WHERE nIstEntwurf=0 AND nIstProforma=0`
+→ **`nStorno=1` wird nicht ausgefiltert.** Storno-markierte Rechnungen müssen
+mitgelesen werden, weil dazu zwingend ein Gutschriftsdokument existiert/zu
+existieren hat — ohne den Storno-Beleg fehlte die Hälfte der Buchung.
+**`nIstExterneRechnung` ist ebenfalls KEIN Filter** — Otto trägt z.B.
+`nIstExterneRechnung=1`, gehört aber genauso in den eigenen Pfad. Die einzige
+Tabelle, in der nur Amazon liegt, ist `Rechnung.tExternerBeleg`.
 
 ### Verteilung (~1.16 Mio aktive Rechnungen)
 
@@ -238,7 +244,8 @@ Bestätigt 2026-05-05:
 | `Rechnung.tExternerBelegPosition`    | Positionen                           | 184k     |
 | `Rechnung.tExternerBelegTransaktion` | Zahlungs-/Transaktionsdaten          | 156k     |
 
-→ Echte Marketplace-Importe (Amazon, Otto).
+→ Echte Marketplace-Importe — **ausschließlich Amazon** (VCS-Pfad ab 2024-11-01).
+Otto liegt **nicht** hier, sondern wie eBay/Kaufland in `Rechnung.tRechnung`.
 `Rechnung.tRechnung.nIstExterneRechnung=1` und `tExternerBeleg` sind **getrennte
 Welten** mit getrenntem Schlüsselraum (`kRechnung` vs. `kExternerBeleg`).
 
@@ -450,7 +457,8 @@ JTL nennt Gutschriften und Rechnungskorrekturen synonym. Die Datenstruktur:
 
 ### Routing-Konsequenz für DATEV-Export
 
-- 2026: 261 aktive Gutschriften (`nStorno=0`). Alle 261 haben `kRechnung`-FK
+- 2026: 261 Gutschriften (Snapshot-Zählung damals mit `nStorno=0` gezogen, dieser
+  Filter wird inzwischen nicht mehr angewendet). Alle haben `kRechnung`-FK
   gesetzt → Lagerland via `Rechnung.tRechnung.cVersandlandISO`-JOIN immer
   ermittelbar.
 - Plattform-Verteilung 2026: Amazon (84), Otto/Kaufland via SCX (80), eBay (30),
@@ -482,14 +490,14 @@ JTL hat zum **1. November 2024** die Ablage von Amazon-Rechnungen geändert:
 
 Repository-Layer liest direkt aus den Basistabellen:
 
-- **Eigene Rechnungen** (eBay/Kaufland):
+- **Eigene Rechnungen** (eBay, Kaufland, Otto, JTL-manuell, Amazon-Sonderfälle):
   - Header: `Rechnung.tRechnung` (Routing) + `dbo.tRechnung` (für `cErloeskonto`)
   - Summen: `Rechnung.tRechnungEckdaten`
   - Adressen: `Rechnung.tRechnungAdresse` (nTyp=0 + nTyp=1)
   - Positionen: `Rechnung.tRechnungPosition` + `tRechnungPositionEckdaten`
   - Plattform-Name: Join `dbo.tPlattform` über `kPlattform`
-  - Filter: `nStorno=0 AND nIstEntwurf=0 AND nIstProforma=0 AND nIstExterneRechnung=0`
-- **Externe Rechnungen** (Amazon/Otto):
+  - Filter: `nIstEntwurf=0 AND nIstProforma=0`. **`nStorno=1` bleibt drin** (Gutschrift muss mitgelesen werden). **Kein Filter auf `nIstExterneRechnung`** — Otto trägt zwar `=1`, gehört aber in diesen Pfad.
+- **Externe Rechnungen** (nur Amazon-VCS, ab 2024-11-01):
   - Header: `Rechnung.tExternerBeleg`
   - Summen: `tExternerBelegEckdaten`
   - Liefer-/Versandadresse + Order-ID: `tExternerBelegTransaktion`
@@ -541,7 +549,7 @@ mitliefert.
 ### View `Rechnung.vExternerBelegSteuerermittlungsdaten` (externe Belege)
 
 **Eigener Schlüsselraum** `kExternerBeleg` / `kExternerBelegPosition` —
-externe Rechnungen (Amazon/Otto) leben **nicht** unter `kRechnung`.
+externe Rechnungen (nur Amazon-VCS) leben **nicht** unter `kRechnung`.
 `Rechnung.tRechnung.nIstExterneRechnung=1` und `tExternerBeleg` sind getrennt.
 
 | Spalte                  | Typ           | Bedeutung                                |
