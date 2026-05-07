@@ -2,31 +2,33 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
-## 2026-05-07 — TransactionID-Konvention finalisiert + Q1-2026-Reconciliation abgeschlossen
+## 2026-05-07 — Marketplace-Suffix-Strip + Q1-DATEV-Reconciliation abgeschlossen
 
-**TransactionID-Finalisierung:**
-- **Primär:** TX = `invoice.jtl_external_order_no` (Marketplace-Order-ID). Fallback im DB-Layer auf JTL-Wawi-interne Auftragsnummer (`tRechnungEckdaten.cAuftragsnummern`).
-- **Letzter Fallback:** Jera-PK-Konvention `{Prefix}{kPK}` (own: `R{kRechnung}`, Storno: `SR{kRechnung}`, external: `ER{kExternerBeleg}`, refund: `EG{kExternerBeleg}`, credit: `G{kGutschrift}`, storno-credit: `SRK{kGutschrift}`).
-- **Q1-Stichprobe Januar:** 5329 Belege → 3373 Wawi-IDs, 1547 Amazon, 187 Otto, 116 sonstige (eBay/Kaufland), 106 Temu. **0 PK-Fallbacks** ausgelöst.
-- Suchbar im JTL-Frontend; Join mit DATEV-Export möglich (gleiche Order-ID in Belegfeld 1).
+**Marketplace-Suffix-Strip (`_N`):**
+- JTL-Konvention bei Mehrteil-Marketplace-Sendungen: `cExterneAuftragsnummer` mit Suffix `_1`, `_2`, … (z.B. `406-0538474-1507531_1` für Amazon 406-0538474-1507531 über 2+ Lager).
+- Helper `_strip_marketplace_suffix()` in `db_jtl.py` entfernt Regex `_\d+$`, angewendet auf alle `_fetch_*`-Methoden.
+- **Effekt:** DutyPay-TransactionID und DATEV-Belegfeld 1 zeigen Original-Order-ID ohne Suffix. Eindeutigkeit pro Beleg bleibt in DocumentID (`cRechnungsnr` / `cBelegnr` / `cGutschriftNr`).
+- **Match:** direkter Join mit Marketplace-Order-IDs (Amazon Seller Central, Otto, etc.) und alte Jera-Refs funktionieren.
+- **Tests:** 7 neue parametrisierte Unit-Tests in `test_db_jtl.py`, 189 passed, 3 skipped.
 
-**DocumentID unverändert:** `cRechnungsnr` / `cBelegnr` / `cGutschriftNr`. Hinweis: Rechnungsnummern ohne Buchstaben-Prefix können in Excel Wissenschaftsnotation triggern.
+**Q1-2026 DATEV-Reconciliation (Cross-Check Engine vs. Jera-Refs):**
+- **Dateien:** `samples/datev/01_Belege_ohne_Temu.csv`, `01_neue_Belege.csv`, `02_Belege_ohne_TEMU.csv`, `03_Belege_ohne_Temu.csv` (13.892 Belege).
+- **Soll Engine = Ref exakt:** Σ 298.824,55 € (Brutto).
+- **Saldo-Diff:** +25,70 € auf 13.892 Belegen (≈ 0,1 ‰).
+  - Erklärbar: 3 Cent-Rundungen Σ +0,04 €.
+  - 165/166 Engine-only / Ref-only Belege: alte Jera-Schnittstelle schrieb internale JTL-Kennungen (`kRechnung`) in Belegfeld 1, Engine schreibt konsistent Marketplace-Order-ID. Keine Engine-Änderung möglich (Ref-Datenqualität-Issue).
+  - Amazon-Order 406-0538474-1507531: User-erstellte Korrektur-Rechnung mit `_1`-Suffix; Engine bucht beide Teile korrekt, nach Suffix-Strip auch im Reconciler matchend.
+- **Konsequenz:** Engine ist Single Source of Truth. Bei zukünftigen Audits bevorzugt mit Engine-Output arbeiten.
 
-**SRK-Semantik verankert:**
-- Storno einer Rechnungskorrektur (Gutschrift-Belegnr mit Prefix "SRK") wird ökonomisch als **Erlös behandelt** → `is_credit_note=False` → SALE mit positivem Vorzeichen, deckungsgleich mit Jera-Buchung.
-- Begründung: Storno einer RK = Rückgängigmachung der Gutschrift. Beispielfall Kunde 11067353.
-- RawInvoice erweitert um `jtl_primary_key: int | None`.
+**Q1-2026 DutyPay-Reconciliation re-run nach TX-ID-Umstellung:**
+- TransactionID jetzt = Marketplace-Order-ID (statt Jera-PK-Konvention `R{pk}`/`G{pk}`).
+- Reconciler von TransactionID-Match auf DocumentID-Match umgestellt; obsolete `_strip_storno_prefix`-Logik entfernt.
+- **Ergebnis:** 13.411 Belege Schnittmenge, 44 Cent-Rundungen Σ −33,95 €. 590 Engine-only / 1 Ref-only.
+- Ref-only-Item: Sammelaggregation von 640 Belegen, durch Excel-Wissenschaftsnotation-Korruption (`2,03E+11` statt Ziffernfolge). Engine korrekt; Ref-Datenqualität.
 
-**Q1-2026-Reconciliation finale Ergebnisse:**
-- Engine Σ Brutto 272.308,33 € / Netto 230.384,79 € (14.001 Belege).
-- Jera-Ref (Hauptdateien JAN/FEB/MAR ohne _fehler.csv) Σ 272.308,45 € / 230.384,88 €.
-- **Δ = −0,12 € Brutto / −0,09 € Netto** = reine Cent-Rundungsdrift auf ~50 Belegen.
-- Buchungslogik bestätigt; bis Ende März **0 Engine-only-Belege mit Wert ≠ 0** (4 Engine-only Belege haben Σ 0,00 €, Probebuchungen).
-- `DutyPay_Diff_01.csv` ist kein eigenständiger Block, sondern User-Korrekturschleife (darf nicht mit-summiert werden).
+**TX-ID-Spec-Konsequenz:** Engine-Output (Marketplace-Order-ID ohne Suffix) ist zuverlässiger als alte Jera-Refs mit teils internalen JTL-Kennungen oder Excel-zerstörter DocIDs.
 
-**Temu-Filter perspektivisch:** Aus DB-Query `_SQL_OWN` entfernt, sitzt jetzt ausschließlich in `core/datev.py` (DutyPay-Spec verlangt vollständige Auslandsverkaufs-Liste; OSS-irrelevant).
-
-**Tests:** 182/3 grün (8 neue Tests in `TestTransactionID`), ruff clean.
+**Tests:** 189 passed, 3 skipped.
 
 ---
 

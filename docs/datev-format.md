@@ -63,7 +63,7 @@ Wir füllen primär:
 | 8 | **Gegenkonto** | Erlöskonto (7-stellig) |
 | 9 | **BU-Schlüssel** | leer / `240` / `241` / `285` (s.u.) |
 | 10 | Belegdatum | `DDMM` (s.o.) |
-| 11 | Belegfeld 1 | externe Order-ID (Amazon-Order-ID, Otto/eBay-ID) |
+| 11 | Belegfeld 1 | externe Order-ID (Amazon-Order-ID, Otto/eBay-ID) **ohne `_N`-Suffix**. JTL speichert Mehrteil-Sendungen mit `_1`, `_2`, … (z.B. `406-0538474-1507531_1`), Engine schreibt nur Basis-Order-ID (z.B. `406-0538474-1507531`). Eindeutigkeit pro Beleg liegt in Buchungstext (DocumentID). |
 | 12 | Belegfeld 2 | optional — z.T. eine zweite Referenz, oft leer |
 | 14 | Buchungstext | `"{cRechnungsnr/cBelegnr} {Vorname Nachname}"` |
 | 40 | EU-Land + UStID (Bestimmung) | bei OSS_B2C nur Land-ISO (z.B. `IT`); bei IGL_B2B Kunden-UStID (z.B. `IT05041920967`) |
