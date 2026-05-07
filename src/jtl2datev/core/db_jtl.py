@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Iterator
@@ -13,6 +14,17 @@ from jtl2datev.core.tax_engine import STANDARD_VAT_RATE
 logger = logging.getLogger(__name__)
 
 _MIN_DATE = date(2024, 11, 1)
+
+_SUFFIX_RE = re.compile(r"_\d+$")
+
+
+def _strip_marketplace_suffix(order_no: str | None) -> str | None:
+    """JTL-Konvention: Mehrteilige Marketplace-Sendungen tragen `_1`, `_2`, ...
+    Beispiel: '406-0538474-1507531_1' → '406-0538474-1507531'.
+    None/leer wird unverändert durchgereicht."""
+    if not order_no:
+        return order_no
+    return _SUFFIX_RE.sub("", order_no)
 
 # All known VAT rates that can appear — standard rates per country plus 0 % and
 # DE reduced rate. Sorted ascending so min() tie-breaks deterministically.
@@ -356,7 +368,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     # Fallback: when no marketplace order ID exists (rare manual JTL
                     # invoice), use the internal Wawi order number from
                     # tRechnungEckdaten.cAuftragsnummern (a comma list — first entry).
-                    jtl_external_order_no=(
+                    jtl_external_order_no=_strip_marketplace_suffix(
                         row["external_order_no"]
                         or (row["jtl_internal_order_no"] or "").split(",", 1)[0].strip()
                         or None
@@ -450,7 +462,9 @@ class JtlInvoiceRepository(InvoiceRepository):
                     is_credit_note=(beleg_typ == 1),
                     lines=(line,),
                     jtl_revenue_account=None,
-                    jtl_external_order_no=row["external_order_no"] or None,
+                    jtl_external_order_no=_strip_marketplace_suffix(
+                        row["external_order_no"] or None
+                    ),
                     # External belege are VCS (Amazon) — no cZahlungsart column; fix to Amazon
                     payment_method="AmazonPayments",
                 )
@@ -555,7 +569,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     is_credit_note=not is_storno_rk,
                     lines=(line,),
                     jtl_revenue_account=row["revenue_account"] or None,
-                    jtl_external_order_no=(
+                    jtl_external_order_no=_strip_marketplace_suffix(
                         row["external_order_no"]
                         or (row["jtl_internal_order_no"] or "").split(",", 1)[0].strip()
                         or None

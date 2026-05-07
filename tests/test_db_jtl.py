@@ -11,7 +11,36 @@ from decimal import Decimal
 
 import pytest
 
-from jtl2datev.core.db_jtl import derive_vat_rate
+from jtl2datev.core.db_jtl import _strip_marketplace_suffix, derive_vat_rate
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _strip_marketplace_suffix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "order_no, expected",
+    [
+        # Standard Amazon multi-shipment suffix stripped
+        ("406-0538474-1507531_1", "406-0538474-1507531"),
+        # No suffix — unchanged
+        ("406-0538474-1507531", "406-0538474-1507531"),
+        # Otto order ID (alphanumeric, no suffix) — unchanged
+        ("cbn4vy5d8z", "cbn4vy5d8z"),
+        # JTL-Wawi internal order number with hyphens + digits — underscore NOT present,
+        # so nothing should be stripped
+        ("21-12042-08233", "21-12042-08233"),
+        # None passes through unchanged
+        (None, None),
+        # Empty string passes through unchanged
+        ("", ""),
+        # Only the last _N is stripped, not inner ones
+        ("foo_1_2", "foo_1"),
+    ],
+)
+def test_strip_marketplace_suffix(order_no: str | None, expected: str | None) -> None:
+    assert _strip_marketplace_suffix(order_no) == expected
 
 
 # ---------------------------------------------------------------------------
