@@ -17,10 +17,10 @@ _MONTH_ABBR: tuple[str, ...] = (
 )
 
 # Fields overwritten in the delta output when --shift-to-period is active.
-# User has manually done this for years — enables direct upload as subsequent-month supplement.
-_SHIFT_DATE_FIELDS = ("DepartureDate", "ArrivalDate", "DocumentDate")
+# All date fields including PostingDateInvoice are shifted so the delta file is
+# internally consistent for the target month (used as subsequent-month supplement, not audit trail).
+_SHIFT_DATE_FIELDS = ("DepartureDate", "ArrivalDate", "DocumentDate", "PostingDateInvoice")
 _SHIFT_PERIOD_FIELD = "ReportingPeriod"
-# PostingDateInvoice is intentionally NOT shifted (internal reference to original document).
 
 
 class NoBaselineError(Exception):

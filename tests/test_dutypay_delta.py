@@ -175,15 +175,14 @@ class TestWriteDeltaCsv:
         assert row["ArrivalDate"] == "01.03.2026"
         assert row["DocumentDate"] == "01.03.2026"
 
-    def test_shift_to_period_leaves_posting_date_unchanged(self, tmp_path: Path) -> None:
+    def test_shift_to_period_also_shifts_posting_date(self, tmp_path: Path) -> None:
         rows = [_make_row("D1")]
         out = tmp_path / "delta_shifted2.csv"
         write_delta_csv(rows, out_path=out, fieldnames=_FIELDNAMES, shift_to_period=(2026, 3))
 
         with out.open(encoding="utf-8", newline="") as fh:
             reader = list(csv.DictReader(fh, delimiter=";"))
-        # PostingDateInvoice must remain the original date
-        assert reader[0]["PostingDateInvoice"] == "01.02.2026"
+        assert reader[0]["PostingDateInvoice"] == "01.03.2026"
 
     def test_empty_delta_writes_header_only(self, tmp_path: Path) -> None:
         out = tmp_path / "empty_delta.csv"
