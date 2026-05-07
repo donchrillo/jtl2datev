@@ -2,6 +2,55 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-07 (Spätstunde) — Fremdwährung, DutyPay-Export, DATEV-Archiv, Standardworkflow
+
+**Fremdwährungs-Handling DATEV + DutyPay** (Commit `e0b54eb`):
+- DATEV-Spalten `WKZ Umsatz`, `Kurs`, `Basis-Umsatz`, `WKZ Basis-Umsatz` bei Fremdwährung-Belegen korrekt befüllt. Kurs aus `invoice.currency_factor` (JTL `fWaehrungsfaktor`).
+- DutyPay: SourceZone/Target/MarketZoneCurrencyCode konsistent aus Zonen-Ländern abgeleitet (EUR-Zone + CZK/DKK/HUF/PLN/RON/SEK/BGN/GBP/CHF/NOK/USD).
+- MarketZone aus `marketplace_country` abgeleitet (10 Amazon-Sites, Fallback Lager-Land; Beispiel: Amazon.co.uk → GB).
+- `RawInvoice.marketplace_country: str | None = None` neu.
+- Verifikation Q1 2026: Engine ↔ Jera matchen 1:1 für alle Fremdwährungs-Belege (GBP/PLN/SEK).
+
+**Pre-Flight-Command `mixed-vat-check`** (Commit `7982c6c`):
+- `jtl2datev mixed-vat-check --from … --to …` (oder `--month`) listet Belege mit gemischten Steuersätzen auf Hauptpositionen.
+- SQL-Queries gegen `tRechnungPosition`, `tExternerBelegPosition`, `tGutschriftPos`, Vater-Position-Filter pro Tabelle.
+- Q1 2026 Live-Run: 0 Treffer in allen drei Beleg-Typen.
+
+**CLI-Vereinheitlichung** (Commits `dd03366` + `b3d99eb`):
+- DATEV-Export akzeptiert jetzt `--month YYYY-MM` (analog DutyPay).
+- Alle 5 Commands (`export`, `export-dutypay`, `export-dutypay-delta`, `mixed-vat-check`, `reconcile`) akzeptieren **entweder** `--from`/`--to` **oder** `--month`.
+- Validierung via zentralen Helper `_resolve_date_range()`.
+- DutyPay-Archive: nur bei `--month`-Modus; bei `--from`/`--to` ist `--out` Pflicht.
+
+**DATEV-Auto-Archive + `export-delta`** (Commit `e1dfa14`):
+- `jtl2datev export --month` archiviert automatisch unter `exports/datev/<YYYY-MM>/<timestamp>.csv` (analog DutyPay).
+- Neuer Command `jtl2datev export-delta --month` berechnet Delta gegen letzten archivierten Vollexport.
+- Match-Strategie: Belegnr aus Buchungstext (erster Token) — eindeutig pro Buchung.
+- EXTF-Format: cp1252-Encoding, Header-/Spaltenzeilen bleiben in Delta-CSV.
+
+**`--shift-to-period` shiftet PostingDateInvoice** (Commit `f429fa2`).
+
+**Audit-Liste** (Commit `5094cfd`):
+- `docs/audit-q1-2026-error-belege.md` — 4 ERROR/UNKNOWN-Belege im DATEV-März-Export zur manuellen Prüfung.
+
+**Q1 + Apr 2026 Re-Exporte mit Auto-Archive:**
+- Alle vier Monate (Jan/Feb/Mar/Apr 2026) durchgelaufen und archiviert.
+- Pro Monat: `exports/datev/<YYYY-MM>.csv` (aktueller Stand), `exports/datev/<YYYY-MM>/<timestamp>.csv` (Baseline für `export-delta`), `exports/dutypay/<YYYY-MM>/<timestamp>.csv` (Baseline für DutyPay-Delta).
+
+**Tests:** 277 passed, 3 skipped. ruff clean.
+
+**Standardworkflow:**
+```
+jtl2datev mixed-vat-check --month YYYY-MM
+jtl2datev reconcile --month YYYY-MM
+jtl2datev export --month YYYY-MM
+jtl2datev export-dutypay --month YYYY-MM
+jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
+jtl2datev export-dutypay-delta --month YYYY-MM
+```
+
+---
+
 ## 2026-05-07 — Marketplace-Suffix-Strip + Q1-DATEV-Reconciliation abgeschlossen
 
 **Marketplace-Suffix-Strip (`_N`):**
