@@ -130,6 +130,45 @@ _MONTH_ABBR: tuple[str, ...] = (
 
 _EU_ALL = EU_COUNTRIES
 
+# ISO-2 country → ISO-4217 currency for all countries we handle.
+# EUR-zone members share one entry; non-EUR EU and third countries listed individually.
+_COUNTRY_CURRENCY: dict[str, str] = {
+    # EUR-zone (including HR since 2023)
+    **{c: "EUR" for c in (
+        "DE", "AT", "BE", "CY", "EE", "ES", "FI", "FR", "GR", "HR",
+        "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK",
+    )},
+    # Non-EUR EU members
+    "CZ": "CZK",
+    "DK": "DKK",
+    "HU": "HUF",
+    "PL": "PLN",
+    "RO": "RON",
+    "SE": "SEK",
+    "BG": "BGN",
+    # Non-EU third countries
+    "GB": "GBP",
+    "CH": "CHF",
+    "NO": "NOK",
+    "US": "USD",
+}
+
+
+def _warehouse_currency(country_iso: str, fallback: str) -> str:
+    """Return the ISO-4217 currency for a given warehouse country.
+
+    Falls back to *fallback* (typically the invoice currency) when the country
+    is not in the mapping table, and logs a warning so unknown countries surface.
+    """
+    if country_iso in _COUNTRY_CURRENCY:
+        return _COUNTRY_CURRENCY[country_iso]
+    logger.warning(
+        "DutyPay: unknown warehouse country %r — using fallback currency %r for SourceZoneCurrencyCode",
+        country_iso,
+        fallback,
+    )
+    return fallback
+
 
 def _is_third_country(iso: str) -> bool:
     """True for any destination outside the EU — GB, CH, TR, US, etc. are all EXPORT."""
@@ -177,11 +216,17 @@ def determine_kind_of_business(invoice: RawInvoice) -> KindOfBusiness:
     return KindOfBusiness.SALE
 
 
-def _market_zone(kind: KindOfBusiness, source_zone: str, target_zone: str) -> str:
-    # v1: simple heuristic, verify against Jera-Diff
+def _market_zone(invoice: RawInvoice, kind: KindOfBusiness) -> str:
+    """MarketZone = Marketplace country from invoice.marketplace_country.
+
+    Fallback when no Marketplace is known: SALE/REFUND → target country,
+    all other kinds → warehouse country.
+    """
+    if invoice.marketplace_country:
+        return invoice.marketplace_country
     if kind in (KindOfBusiness.SALE, KindOfBusiness.REFUND):
-        return target_zone
-    return source_zone
+        return invoice.ship_to.country_iso
+    return invoice.warehouse_country
 
 
 def _incoterms(kind: KindOfBusiness) -> str:
@@ -251,9 +296,11 @@ def _build_invoice_row(
 ) -> list[str]:
     source_zone = invoice.warehouse_country
     target_zone = invoice.ship_to.country_iso
-    market_zone = _market_zone(kind, source_zone, target_zone)
+    market_zone = _market_zone(invoice, kind)
     doc_date = invoice.invoice_date
     currency = invoice.currency
+    target_currency = _warehouse_currency(target_zone, currency)
+    market_currency = _warehouse_currency(market_zone, currency)
 
     # Aggregate gross/net across all lines, then apply Refund sign.
     # abs() prevents double-negation when JTL already stores credit note
@@ -332,18 +379,18 @@ def _build_invoice_row(
         "",                                             # SourceZoneZip (not available)
         source_vat_id,                                  # SourceZoneVatID
         _vat_rate_str(source_vat_rate),                 # SourceZoneVatRate
-        currency,                                       # SourceZoneCurrencyCode
+        _warehouse_currency(source_zone, currency),     # SourceZoneCurrencyCode
         "",                                             # SourceZoneGross (not filled per spec)
         "",                                             # SourceZoneNet (not filled per spec)
         target_zone,                                    # TargetZone
         "",                                             # TargetZoneZip (not filled — Profil 1)
         target_vat_id,                                  # TargetZoneVatID
         _vat_rate_str(target_vat_rate),                 # TargetZoneVatRate
-        currency,                                       # TargetZoneCurrencyCode
+        target_currency,                                # TargetZoneCurrencyCode
         "",                                             # TargetZoneGross (not filled per spec)
         "",                                             # TargetZoneNet (not filled per spec)
         market_zone,                                    # MarketZone
-        currency,                                       # MarketZoneCurrencyCode
+        market_currency,                                # MarketZoneCurrencyCode
         _format_decimal(mz_gross),                      # MarketZoneGross
         _format_decimal(mz_net),                        # MarketZoneNet
         "",                                             # ItemID (not required — Profil 1)

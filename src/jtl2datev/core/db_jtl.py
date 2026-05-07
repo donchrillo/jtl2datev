@@ -17,6 +17,39 @@ _MIN_DATE = date(2024, 11, 1)
 
 _SUFFIX_RE = re.compile(r"_\d+$")
 
+# Explicit mapping of known tPlattform.cName values → ISO-2 country.
+# Maintained as a flat table for clarity and easy extension.
+# "Amazon" (generic) is intentionally absent — it has no clear single market.
+_PLATFORM_COUNTRY: dict[str, str] = {
+    "Amazon.de": "DE",
+    "Amazon.fr": "FR",
+    "Amazon.it": "IT",
+    "Amazon.es": "ES",
+    "Amazon.com.be": "BE",
+    "Amazon.nl": "NL",
+    "Amazon.se": "SE",
+    "Amazon.pl": "PL",
+    "Amazon.co.uk": "GB",
+}
+
+
+def _marketplace_country_for(platform_name: str | None, fallback: str) -> str:
+    """Return ISO-2 country for a given tPlattform.cName.
+
+    Returns the fallback (warehouse country) for None, generic "Amazon",
+    or any unknown platform name, logging a warning for unrecognised values.
+    """
+    if not platform_name:
+        return fallback
+    if platform_name in _PLATFORM_COUNTRY:
+        return _PLATFORM_COUNTRY[platform_name]
+    logger.warning(
+        "Unknown platform name %r — using fallback marketplace_country %r",
+        platform_name,
+        fallback,
+    )
+    return fallback
+
 
 def _strip_marketplace_suffix(order_no: str | None) -> str | None:
     """JTL-Konvention: Mehrteilige Marketplace-Sendungen tragen `_1`, `_2`, ...
@@ -348,6 +381,9 @@ class JtlInvoiceRepository(InvoiceRepository):
                 inv_date_raw = row["invoice_date"]
                 svc_date_raw = row["service_date"]
 
+                marketplace_country = _marketplace_country_for(
+                    row["platform_name"] or None, warehouse.strip()
+                )
                 yield RawInvoice(
                     source="jtl_own",
                     jtl_primary_key=int(inv_key) if inv_key is not None else None,
@@ -362,6 +398,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     customer_no=row["customer_no"] or None,
                     platform_id=row["platform_id"],
                     platform_name=row["platform_name"] or None,
+                    marketplace_country=marketplace_country,
                     is_credit_note=False,
                     lines=(line,),
                     jtl_revenue_account=row["revenue_account"] or None,
@@ -444,6 +481,9 @@ class JtlInvoiceRepository(InvoiceRepository):
                 debitor_nr = row["debitor_nr"]
                 customer_no = str(debitor_nr) if debitor_nr else None
 
+                marketplace_country = _marketplace_country_for(
+                    row["platform_name"] or None, warehouse.strip()
+                )
                 yield RawInvoice(
                     source="jtl_external",
                     jtl_primary_key=int(beleg_key) if beleg_key is not None else None,
@@ -458,6 +498,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     customer_no=customer_no,
                     platform_id=row["platform_id"],
                     platform_name=row["platform_name"] or None,
+                    marketplace_country=marketplace_country,
                     # nBelegtyp 1 = Gutschrift (amounts already negative in DB); 0/2 = Rechnung
                     is_credit_note=(beleg_typ == 1),
                     lines=(line,),
@@ -552,6 +593,9 @@ class JtlInvoiceRepository(InvoiceRepository):
                 kunde = row["kKunde"]
                 customer_no = str(kunde) if kunde else None
 
+                marketplace_country = _marketplace_country_for(
+                    row["platform_name"] or None, warehouse.strip()
+                )
                 yield RawInvoice(
                     source="jtl_credit_note",
                     jtl_primary_key=int(gutschrift_key) if gutschrift_key is not None else None,
@@ -566,6 +610,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     customer_no=customer_no,
                     platform_id=row["platform_id"],
                     platform_name=row["platform_name"] or None,
+                    marketplace_country=marketplace_country,
                     is_credit_note=not is_storno_rk,
                     lines=(line,),
                     jtl_revenue_account=row["revenue_account"] or None,

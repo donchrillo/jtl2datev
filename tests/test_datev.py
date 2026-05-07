@@ -12,6 +12,7 @@ from jtl2datev.core.datev import (
     ExportReport,
     _format_belegdatum,
     _format_decimal,
+    _format_kurs,
     _sanitize_buchungstext,
     write_extf_buchungsstapel,
 )
@@ -61,6 +62,8 @@ def _invoice(
     payment_method: str | None = "AmazonPayments",
     external_order_no: str | None = "TEST-ORDER-123",
     bill_to: PartyAddress | None = None,
+    currency: str = "EUR",
+    currency_factor: Decimal = Decimal("1"),
 ) -> RawInvoice:
     if lines is None:
         lines = (_line(),)
@@ -70,8 +73,8 @@ def _invoice(
         source="jtl_external",
         invoice_no=invoice_no,
         invoice_date=invoice_date,
-        currency="EUR",
-        currency_factor=Decimal("1"),
+        currency=currency,
+        currency_factor=currency_factor,
         warehouse_country=wh,
         ship_to=PartyAddress(country_iso=dest),
         bill_to=bill_to,
@@ -544,3 +547,80 @@ class TestTemuFilter:
         assert report.bookings_written >= 1, "Normal beleg must appear despite Temu sibling"
         # bookings_written reflects only the non-Temu invoice
         assert report.bookings_written < 3, "Temu beleg rows must not be counted"
+
+
+class TestForeignCurrency:
+    """EXTF Buchungsstapel: WKZ/Kurs/Basis-Umsatz columns for non-EUR invoices."""
+
+    def _get_data_row(self, invoice: RawInvoice) -> list[str]:
+        settings = _settings()
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            out = Path(tmp.name)
+        write_extf_buchungsstapel(
+            iter([invoice]),
+            out_path=out,
+            settings=settings,
+            date_from=date(2026, 1, 1),
+            date_to=date(2026, 1, 31),
+            decisions_by_invoice=_decisions,
+        )
+        with out.open(encoding="cp1252", newline="") as fh:
+            rows = list(csv.reader(fh, delimiter=";"))
+        out.unlink()
+        return rows[2]  # first data row
+
+    def test_eur_invoice_fx_columns_empty(self) -> None:
+        inv = _invoice(currency="EUR", currency_factor=Decimal("1"))
+        row = self._get_data_row(inv)
+        assert row[2] == ""   # WKZ Umsatz
+        assert row[3] == ""   # Kurs
+        assert row[4] == ""   # Basis-Umsatz
+        assert row[5] == ""   # WKZ Basis-Umsatz
+
+    def test_gbp_invoice_fx_columns_filled(self) -> None:
+        # 22,26 GBP at factor 0.8719 → Basis-Umsatz = 22.26 / 0.8719 = 25.53
+        gbp_line = _line(
+            gross=Decimal("22.26"),
+            net=Decimal("22.26"),
+            vat_rate=Decimal("0"),
+        )
+        inv = _invoice(
+            wh="GB",
+            dest="GB",
+            invoice_no="FR500071NL56FD",
+            currency="GBP",
+            currency_factor=Decimal("0.8719"),
+            lines=(gbp_line,),
+        )
+        row = self._get_data_row(inv)
+        assert row[2] == "GBP"    # WKZ Umsatz
+        assert row[3] == "0,8719" # Kurs
+        assert row[4] == "25,53"  # Basis-Umsatz
+        assert row[5] == "EUR"    # WKZ Basis-Umsatz
+
+    def test_gbp_refund_basis_umsatz_same_sign_as_umsatz(self) -> None:
+        # _format_decimal uses abs() for Umsatz; Basis-Umsatz must match.
+        # Engine writes abs value; sign is controlled by S/H-Kennzeichen.
+        gbp_line = _line(
+            gross=Decimal("-22.26"),
+            net=Decimal("-22.26"),
+            vat_rate=Decimal("0"),
+        )
+        inv = _invoice(
+            wh="GB",
+            dest="GB",
+            invoice_no="FR500071NL56FD-R",
+            is_credit_note=True,
+            currency="GBP",
+            currency_factor=Decimal("0.8719"),
+            lines=(gbp_line,),
+        )
+        row = self._get_data_row(inv)
+        # Both Umsatz and Basis-Umsatz must be positive absolute values
+        assert row[0] == "22,26"
+        assert row[4] == "25,53"
+
+    def test_format_kurs_four_decimals(self) -> None:
+        assert _format_kurs(Decimal("0.8719")) == "0,8719"
+        assert _format_kurs(Decimal("1")) == "1,0000"
+        assert _format_kurs(Decimal("1.2")) == "1,2000"

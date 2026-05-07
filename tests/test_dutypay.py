@@ -80,6 +80,7 @@ def _invoice(
     ship_zip: str | None = None,
     ship_city: str | None = None,
     ship_street: str | None = None,
+    marketplace_country: str | None = None,
 ) -> RawInvoice:
     if lines is None:
         lines = (_line(),)
@@ -95,6 +96,7 @@ def _invoice(
         is_credit_note=is_credit_note,
         lines=lines,
         jtl_external_order_no=external_order_no,
+        marketplace_country=marketplace_country,
     )
 
 
@@ -162,23 +164,49 @@ class TestKindOfBusiness:
 # ── Derived field tests ───────────────────────────────────────────────────────
 
 class TestMarketZone:
-    def test_sale_uses_target_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.SALE, "DE", "IT") == "IT"
+    # Fallback heuristic (no marketplace_country)
+    def test_sale_fallback_uses_target_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="IT")
+        assert _market_zone(inv, KindOfBusiness.SALE) == "IT"
 
-    def test_refund_uses_target_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.REFUND, "DE", "IT") == "IT"
+    def test_refund_fallback_uses_target_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="IT", is_credit_note=True)
+        assert _market_zone(inv, KindOfBusiness.REFUND) == "IT"
 
-    def test_b2b_uses_source_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.B2B, "DE", "IT") == "DE"
+    def test_b2b_fallback_uses_source_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="IT", vat_id="IT05041920967")
+        assert _market_zone(inv, KindOfBusiness.B2B) == "DE"
 
-    def test_export_uses_source_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.EXPORT, "DE", "CH") == "DE"
+    def test_export_fallback_uses_source_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="CH")
+        assert _market_zone(inv, KindOfBusiness.EXPORT) == "DE"
 
-    def test_b2b_refund_uses_source_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.B2B_REFUND, "DE", "IT") == "DE"
+    def test_b2b_refund_fallback_uses_source_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="IT", vat_id="IT05041920967", is_credit_note=True)
+        assert _market_zone(inv, KindOfBusiness.B2B_REFUND) == "DE"
 
-    def test_export_refund_uses_source_zone(self) -> None:
-        assert _market_zone(KindOfBusiness.EXPORT_REFUND, "DE", "CH") == "DE"
+    def test_export_refund_fallback_uses_source_zone(self) -> None:
+        inv = _invoice(wh="DE", dest="CH", is_credit_note=True)
+        assert _market_zone(inv, KindOfBusiness.EXPORT_REFUND) == "DE"
+
+    # marketplace_country overrides heuristic regardless of source/target
+    def test_marketplace_country_overrides_sale(self) -> None:
+        inv = _invoice(wh="FR", dest="GB", marketplace_country="GB")
+        assert _market_zone(inv, KindOfBusiness.EXPORT) == "GB"
+
+    def test_marketplace_country_gb_overrides_fr_source(self) -> None:
+        # Jera-Ref case: FR → GB, Amazon.co.uk → MarketZone must be GB
+        inv = _invoice(wh="FR", dest="GB", marketplace_country="GB")
+        assert _market_zone(inv, KindOfBusiness.EXPORT) == "GB"
+
+    def test_marketplace_country_de_for_domestic_sale(self) -> None:
+        inv = _invoice(wh="DE", dest="DE", marketplace_country="DE")
+        assert _market_zone(inv, KindOfBusiness.SALE) == "DE"
+
+    def test_marketplace_country_none_falls_back(self) -> None:
+        # Explicit None → heuristic kicks in
+        inv = _invoice(wh="DE", dest="FR", marketplace_country=None)
+        assert _market_zone(inv, KindOfBusiness.SALE) == "FR"
 
 
 class TestTaxReportingScheme:
@@ -590,3 +618,90 @@ class TestWriteDutyPayCsv:
             header = next(reader)
             row = next(reader)
         assert row[header.index("DocumentID")] == "R-DE-249030238-2025-9999"
+
+
+# ── SourceZoneCurrencyCode, TargetZoneCurrencyCode, MarketZoneCurrencyCode ────
+
+class TestZoneCurrencyCodes:
+    """Zone currency codes are derived from zone countries, not from invoice currency."""
+
+    def _get_row(self, invoice: RawInvoice) -> tuple[list[str], list[str]]:
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            path = Path(f.name)
+        write_dutypay_csv([invoice], out_path=path, own_vat_ids=_OWN_VAT_IDS)
+        with path.open(encoding="utf-8", newline="") as fh:
+            reader = csv.reader(fh, delimiter=";")
+            header = next(reader)
+            row = next(reader)
+        path.unlink()
+        return header, row
+
+    def test_de_warehouse_gbp_invoice_source_is_eur(self) -> None:
+        inv = _invoice(wh="DE", dest="GB", currency="GBP")
+        header, row = self._get_row(inv)
+        # SourceZone=DE → EUR (not GBP invoice currency)
+        assert row[header.index("SourceZoneCurrencyCode")] == "EUR"
+        # No marketplace_country set; dest=GB → heuristic MarketZone=GB (EXPORT) → DE
+        # EXPORT kind → fallback is warehouse (DE → EUR); MarketZone=DE
+        # Actually: dest=GB → EXPORT → fallback MarketZone = source_zone=DE → EUR
+        assert row[header.index("MarketZoneCurrencyCode")] == "EUR"
+
+    def test_fr_warehouse_eur_invoice_source_is_eur(self) -> None:
+        inv = _invoice(wh="FR", dest="FR", currency="EUR")
+        header, row = self._get_row(inv)
+        assert row[header.index("SourceZoneCurrencyCode")] == "EUR"
+        assert row[header.index("MarketZoneCurrencyCode")] == "EUR"
+
+    def test_pl_warehouse_eur_invoice_source_is_pln(self) -> None:
+        inv = _invoice(wh="PL", dest="AT", currency="EUR")
+        header, row = self._get_row(inv)
+        assert row[header.index("SourceZoneCurrencyCode")] == "PLN"
+        # SALE: fallback MarketZone=target=AT → EUR
+        assert row[header.index("MarketZoneCurrencyCode")] == "EUR"
+
+    def test_cz_warehouse_source_is_czk(self) -> None:
+        inv = _invoice(wh="CZ", dest="PL", currency="PLN")
+        header, row = self._get_row(inv)
+        assert row[header.index("SourceZoneCurrencyCode")] == "CZK"
+
+    def test_target_zone_currency_from_dest_country(self) -> None:
+        # TargetZoneCurrencyCode is derived from dest country currency.
+        inv_de_gb = _invoice(wh="DE", dest="GB", currency="GBP")
+        header, row = self._get_row(inv_de_gb)
+        assert row[header.index("TargetZoneCurrencyCode")] == "GBP"
+
+        inv_fr_fr = _invoice(wh="FR", dest="FR", currency="EUR")
+        header, row = self._get_row(inv_fr_fr)
+        assert row[header.index("TargetZoneCurrencyCode")] == "EUR"
+
+        inv_pl_at = _invoice(wh="PL", dest="AT", currency="EUR")
+        header, row = self._get_row(inv_pl_at)
+        assert row[header.index("TargetZoneCurrencyCode")] == "EUR"
+
+        inv_pl_se = _invoice(wh="PL", dest="SE", currency="SEK")
+        header, row = self._get_row(inv_pl_se)
+        assert row[header.index("TargetZoneCurrencyCode")] == "SEK"
+
+    def test_marketplace_country_gb_gives_gbp_market_currency(self) -> None:
+        # FR warehouse, GB dest, Amazon.co.uk → MarketZone=GB → GBP
+        inv = _invoice(wh="FR", dest="GB", currency="GBP", marketplace_country="GB")
+        header, row = self._get_row(inv)
+        assert row[header.index("MarketZone")] == "GB"
+        assert row[header.index("MarketZoneCurrencyCode")] == "GBP"
+
+    def test_marketplace_country_fr_gives_eur_market_currency(self) -> None:
+        inv = _invoice(wh="DE", dest="FR", currency="EUR", marketplace_country="FR")
+        header, row = self._get_row(inv)
+        assert row[header.index("MarketZone")] == "FR"
+        assert row[header.index("MarketZoneCurrencyCode")] == "EUR"
+
+    def test_marketplace_country_se_gives_sek_market_currency(self) -> None:
+        inv = _invoice(wh="DE", dest="SE", currency="SEK", marketplace_country="SE")
+        header, row = self._get_row(inv)
+        assert row[header.index("MarketZone")] == "SE"
+        assert row[header.index("MarketZoneCurrencyCode")] == "SEK"
+
+    def test_item_currency_code_is_invoice_currency(self) -> None:
+        inv = _invoice(wh="DE", dest="GB", currency="GBP")
+        header, row = self._get_row(inv)
+        assert row[header.index("ItemCurrencyCode")] == "GBP"

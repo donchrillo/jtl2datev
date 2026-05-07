@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from jtl2datev.core.db_jtl import _strip_marketplace_suffix, derive_vat_rate
+from jtl2datev.core.db_jtl import _marketplace_country_for, _strip_marketplace_suffix, derive_vat_rate
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +79,47 @@ def test_strip_marketplace_suffix(order_no: str | None, expected: str | None) ->
 )
 def test_derive_vat_rate(gross: Decimal, net: Decimal, expected: Decimal) -> None:
     assert derive_vat_rate(gross, net) == expected
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _marketplace_country_for
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "platform_name, fallback, expected",
+    [
+        # Known platforms return their country regardless of fallback
+        ("Amazon.de", "DE", "DE"),
+        ("Amazon.co.uk", "FR", "GB"),  # Marketplace-Land beats Lager-Land
+        ("Amazon.fr", "DE", "FR"),
+        ("Amazon.nl", "DE", "NL"),
+        ("Amazon.pl", "DE", "PL"),
+        ("Amazon.se", "DE", "SE"),
+        ("Amazon.com.be", "DE", "BE"),
+        # None → fallback
+        (None, "DE", "DE"),
+        # Empty string → fallback
+        ("", "FR", "FR"),
+        # Generic "Amazon" → fallback (no clear market)
+        ("Amazon", "DE", "DE"),
+        # Unknown platform → fallback
+        ("eBay.de", "DE", "DE"),
+    ],
+)
+def test_marketplace_country_for(
+    platform_name: str | None, fallback: str, expected: str
+) -> None:
+    assert _marketplace_country_for(platform_name, fallback) == expected
+
+
+def test_marketplace_country_for_unknown_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="jtl2datev.core.db_jtl"):
+        result = _marketplace_country_for("eBay.de", "DE")
+    assert result == "DE"
+    assert any("eBay.de" in m for m in caplog.messages)
 
 
 # ---------------------------------------------------------------------------

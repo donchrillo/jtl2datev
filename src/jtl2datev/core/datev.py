@@ -148,6 +148,10 @@ _NUM_COLS = 124
 # Column indices (0-based) for the fields we populate
 _IDX_UMSATZ = 0
 _IDX_SH = 1
+_IDX_WKZ_UMSATZ = 2
+_IDX_KURS = 3
+_IDX_BASIS_UMSATZ = 4
+_IDX_WKZ_BASIS_UMSATZ = 5
 _IDX_KONTO = 6
 _IDX_GEGENKONTO = 7
 _IDX_BU = 8
@@ -219,6 +223,11 @@ def load_compare_map(path: Path) -> dict[str, set[tuple[str, str]]]:
 
 def _format_decimal(val: Decimal) -> str:
     return f"{abs(val):.2f}".replace(".", ",")
+
+
+def _format_kurs(val: Decimal) -> str:
+    """Format exchange rate with at least 4 decimal places, German comma."""
+    return f"{val:.4f}".replace(".", ",")
 
 
 def _format_belegdatum(d: date) -> str:
@@ -293,6 +302,22 @@ def _build_row(
 
     row[_IDX_UMSATZ] = _format_decimal(gross_sum)
     row[_IDX_SH] = "H" if invoice.is_credit_note else "S"
+
+    if invoice.currency != "EUR":
+        cf = invoice.currency_factor
+        if not cf:
+            logger.warning(
+                "DATEV export: %s has currency %s but currency_factor is 0/None — skipping FX columns",
+                invoice.invoice_no,
+                invoice.currency,
+            )
+        else:
+            basis = (gross_sum / cf).quantize(Decimal("0.01"))
+            row[_IDX_WKZ_UMSATZ] = invoice.currency
+            row[_IDX_KURS] = _format_kurs(cf)
+            row[_IDX_BASIS_UMSATZ] = f"{abs(basis):.2f}".replace(".", ",")
+            row[_IDX_WKZ_BASIS_UMSATZ] = "EUR"
+
     row[_IDX_KONTO] = debitor
     row[_IDX_GEGENKONTO] = account.account
     row[_IDX_BU] = account.bu_key

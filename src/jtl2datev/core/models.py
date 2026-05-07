@@ -76,6 +76,7 @@ class RawInvoice(BaseModel):
     customer_no: str | None = None
     platform_id: int | None = None
     platform_name: str | None = None
+    marketplace_country: str | None = None  # ISO-2; derived from kPlattform
     is_credit_note: bool
     lines: tuple[RawInvoiceLine, ...]
     jtl_revenue_account: str | None = None
