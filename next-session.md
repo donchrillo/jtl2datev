@@ -6,7 +6,7 @@
 - JTL-Konvention: Mehrteil-Sendungen mit `_N`-Suffix in `cExterneAuftragsnummer` (z.B. `406-0538474-1507531_1`). Helper `_strip_marketplace_suffix()` entfernt `_\d+$` in `db_jtl.py`.
 - **TransactionID & Belegfeld 1:** Zeigen Original-Order-ID ohne Suffix. DocumentID bleibt Eindeutig-Schlüssel.
 - **Q1-DATEV-Cross-Check Engine vs. Jera:** 13.892 Belege, Σ Soll exakt 298.824,55 €, Saldo-Diff +25,70 € (0,1‰), hauptsächlich Jera-Datenqualität (internale IDs vs. Marketplace-Order-IDs). Engine ist Single Source of Truth.
-- **Q1-DutyPay-Reconciliation:** DocumentID-Match (statt TX-ID), 13.411 Schnittmenge, Δ −33,95 € (Rundungen).
+- **Q1-DutyPay-Reconciliation:** DocumentID-Match (statt TX-ID), 13.411 Schnittmenge, Δ −0,12 € Brutto (reine Cent-Rundung).
 - 189 Tests grün, ruff clean.
 - Siehe `docs/status.md` für Details.
 

@@ -23,7 +23,7 @@ Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 **Q1-2026 DutyPay-Reconciliation re-run nach TX-ID-Umstellung:**
 - TransactionID jetzt = Marketplace-Order-ID (statt Jera-PK-Konvention `R{pk}`/`G{pk}`).
 - Reconciler von TransactionID-Match auf DocumentID-Match umgestellt; obsolete `_strip_storno_prefix`-Logik entfernt.
-- **Ergebnis:** 13.411 Belege Schnittmenge, 44 Cent-Rundungen Σ −33,95 €. 590 Engine-only / 1 Ref-only.
+- **Ergebnis:** 13.411 Belege Schnittmenge, 42 Cent-Rundungen Σ −0,12 € Brutto (Q1-Total). `samples/duty/DutyPay-SALE-2026-FEB_fehler.csv` ist Duplikat der Haupt-FEB-Datei (vom Steuerberater nach DutyPay-Rückweisung neu hochgeladen) und wird im Reconciler nicht mit-summiert. 590 Engine-only / 1 Ref-only.
 - Ref-only-Item: Sammelaggregation von 640 Belegen, durch Excel-Wissenschaftsnotation-Korruption (`2,03E+11` statt Ziffernfolge). Engine korrekt; Ref-Datenqualität.
 
 **TX-ID-Spec-Konsequenz:** Engine-Output (Marketplace-Order-ID ohne Suffix) ist zuverlässiger als alte Jera-Refs mit teils internalen JTL-Kennungen oder Excel-zerstörter DocIDs.
