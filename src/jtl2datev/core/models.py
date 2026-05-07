@@ -65,6 +65,7 @@ class RawInvoice(BaseModel):
 
     source: Literal["jtl_own", "jtl_external", "jtl_credit_note"]
     invoice_no: str
+    jtl_primary_key: int | None = None  # kRechnung / kExternerBeleg / kGutschrift
     invoice_date: date
     service_date: date | None = None
     currency: str

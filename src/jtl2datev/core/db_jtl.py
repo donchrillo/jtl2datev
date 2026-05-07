@@ -83,8 +83,9 @@ WHERE r.nIstEntwurf = 0
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
-  -- Skip Temu belege (PO-… external order IDs); see _SQL_EXTERNAL note.
-  AND (r.cExterneAuftragsnummer IS NULL OR r.cExterneAuftragsnummer NOT LIKE 'PO%')
+  -- Temu-Belege (cExterneAuftragsnummer LIKE 'PO%') bleiben drin: DutyPay-Spec
+  -- verlangt vollständige Auslandsverkaufs-Liste (auch DE→DE B2C). Filter sitzt
+  -- ausschließlich im DATEV-Exporter (core/datev.py).
 ORDER BY r.kRechnung
 """)
 
@@ -337,6 +338,7 @@ class JtlInvoiceRepository(InvoiceRepository):
 
                 yield RawInvoice(
                     source="jtl_own",
+                    jtl_primary_key=int(inv_key) if inv_key is not None else None,
                     invoice_no=row["invoice_no"] or str(inv_key),
                     invoice_date=_to_date(inv_date_raw),
                     service_date=_to_date(svc_date_raw) if svc_date_raw else None,
@@ -432,6 +434,7 @@ class JtlInvoiceRepository(InvoiceRepository):
 
                 yield RawInvoice(
                     source="jtl_external",
+                    jtl_primary_key=int(beleg_key) if beleg_key is not None else None,
                     invoice_no=row["invoice_no"] or str(beleg_key),
                     invoice_date=_to_date(row["invoice_date"]),
                     service_date=None,
@@ -518,6 +521,13 @@ class JtlInvoiceRepository(InvoiceRepository):
 
                 # vGutschriftEckdaten stores positive values; is_credit_note=True
                 # signals downstream (DATEV/DutyPay) to apply the negative sign.
+                # Ausnahme: SRK = Storno einer Rechnungskorrektur (cGutschriftNr
+                # beginnt mit "SRK"). Ökonomisch hebt das die ursprüngliche
+                # Gutschrift wieder auf → der Betrag zählt als Erlös, nicht als
+                # Refund. Wird daher als reguläre Rechnung (is_credit_note=False)
+                # behandelt → SALE mit positivem Vorzeichen, exakt wie Jera bucht.
+                inv_no_raw = row["invoice_no"] or str(gutschrift_key)
+                is_storno_rk = inv_no_raw.upper().startswith("SRK")
                 gross = _decimal(row["total_gross"])
                 net = _decimal(row["total_net"])
                 line = _synthetic_line(gross, net)
@@ -530,7 +540,8 @@ class JtlInvoiceRepository(InvoiceRepository):
 
                 yield RawInvoice(
                     source="jtl_credit_note",
-                    invoice_no=row["invoice_no"] or str(gutschrift_key),
+                    jtl_primary_key=int(gutschrift_key) if gutschrift_key is not None else None,
+                    invoice_no=inv_no_raw,
                     invoice_date=_to_date(row["invoice_date"]),
                     service_date=None,
                     currency=currency,
@@ -541,7 +552,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     customer_no=customer_no,
                     platform_id=row["platform_id"],
                     platform_name=row["platform_name"] or None,
-                    is_credit_note=True,
+                    is_credit_note=not is_storno_rk,
                     lines=(line,),
                     jtl_revenue_account=row["revenue_account"] or None,
                     jtl_external_order_no=(

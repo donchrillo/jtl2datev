@@ -44,8 +44,8 @@ Profile 2–4 sind **out of scope**: Sie wurden früher als Vollkunden-Pakete an
 |---|---|---|---|---|---|---|
 | Positions-Nr. | int | `1` | 100% | seq | Fortlaufende Nummer je Position innerhalb Datei | Pflicht |
 | **KindOfBusiness** | enum | `SALE`, `REFUND`, `B2B`, `EXPORT`, `B2B-REFUND`, `EXPORT-REFUND` | 100% | Regel-Engine (s.u.) | Entscheidungsbaum nach Lager/Ziel/Kundentyp | Pflicht |
-| **TransactionID** | nvarchar | `R1252980` oder `ER149091` | 100% | JTL `invoice_no` (Belegnummer) | Immer die JTL-interne Belegnummer — **nicht** die externe Marketplace-Order-ID (404-…). `R` = Regular invoice, `ER/E-` = External/Amazon. | Optional |
-| **DocumentID** | nvarchar | `R-DE-249030238-2026-1` | 100% | JTL Belegnummer (eindeutig) | Eindeutiger Beleg-Key für Grouping | Pflicht |
+| **TransactionID** | nvarchar | `404-5433421-0313123` oder `21-12042-08233` | 100% | JTL externe Auftragsnummer (Marketplace-Order-ID), Fallback Wawi-interne Auftragsnummer | Marktplatz-Order-ID (Amazon `404-…`, Otto `cbn4…`, etc.); ohne Marketplace-Bezug die JTL-Wawi-Auftragsnummer (z.B. `21-12042-08233`). Ermöglicht Suche im JTL-Frontend und Join mit DATEV-Export (gleiche ID dort in Belegfeld 1). Letzter Fallback `{R/SR/G/SRK/ER/EG}{kPK}` falls keine Auftragsnr existiert. | Optional |
+| **DocumentID** | nvarchar | `R-DE-249030238-2026-1` | 100% | JTL Belegnummer (eindeutig) | Eindeutiger Beleg-Key für Grouping. Eigene Rechnungsnummern haben kein Buchstaben-Prefix → Excel kann auf reine Ziffernfolgen mit Wissenschaftsnotation reagieren. | Pflicht |
 | **ReportingPeriod** | nvarchar | `2026-JAN` | 100% | Belegdatum Monat | Format: `YYYY-MMM` (JAN/FEB/MAR…/DEC). Siehe Datumsregel (Sektion unten). | Bedingt |
 | **DepartureDate** | date | `02.01.2026` | 100% | JTL `dErstellt` / `dBelegdatumUtc` | Versand-/Beleg-Datum. Mind. 1 von {ReportingPeriod, DepartureDate, ArrivalDate} erforderlich. | Bedingt |
 | **ArrivalDate** | date | `02.01.2026` | 100% | JTL `dErstellt` / `dBelegdatumUtc` | praktisch = DepartureDate. Mind. 1 Datum erforderlich. | Bedingt |
@@ -172,6 +172,9 @@ DATEV definiert zusätzliche Werte, die wir aktuell **nicht abbilden** (out of s
 ## Refund-Handling
 
 **Vorzeichen-Regel:** Gutschriften (Refunds, Stornos) sind **negativ** in beiden `MarketZoneGross` und `MarketZoneNet`.
+
+**Sonderfall: Storno einer Rechnungskorrektur (SRK):**
+Belegnummern mit Prefix `SRK` (z.B. `SRK202450012113`) kennzeichnen das Storno einer Rechnungskorrektur (=Gutschrift). Ökonomisch ist das eine **Rückgängigmachung der Gutschrift**, daher wird SRK als **SALE mit positivem Vorzeichen** behandelt (nicht als REFUND). Beispiel: Kunde 11067353, fälschliche Rechnungskorrektur wird via SRK storniert → DutyPay erfasst das als Erlös.
 
 **Beispiel aus MAR-Sample (Zeile 809, DocumentID `DE60009ANL56FQ`):**
 ```
@@ -303,7 +306,7 @@ Temu-Belege (Pilot Ende 2025, zurückgerollt) tragen externe Auftragsnummern mit
 Nach Sample-Analyse sind folgende Punkte **verifiziert**, könnten aber bei Live-Daten abweichen:
 
 - **MarketZone-Heuristik (`SALE/REFUND` → TargetZone, sonst SourceZone):** Gegen Live-Belege abgleichen, falls Diff > 1%.
-- **Marktplatz-Erkennung (externe Order-ID):** Quellfeld in JTL prüfen — aktuell heuristisch aus `TransactionID`-Prefix (`E` = External).
+- **Marktplatz-Erkennung (externe Order-ID):** Quellfeld in JTL prüfen — aus `RawInvoice.source` (`jtl_external` = External-Marktplatz).
 - **TAX_COLLECTION_RESPONSIBILITY=SELLER-Edge-Case:** Nur 1 Zeile im Sample; unklar ob reproduzierbar. Falls Häufigkeit steigt: Regel verfeinern.
 
 ## Implementierungs-Prüfliste für `core/dutypay.py`

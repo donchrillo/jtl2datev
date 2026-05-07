@@ -295,10 +295,26 @@ def _build_invoice_row(
     if kind in (KindOfBusiness.B2B, KindOfBusiness.B2B_REFUND):
         target_vat_id = _safe(invoice.bill_to.vat_id or invoice.ship_to.vat_id or "")
 
-    # TransactionID: JTL internal invoice number (R…, ER…, G…).
-    # External marketplace order IDs (404-…) must NOT be used here — they go only
-    # into jtl_external_order_no for TAX_COLLECTION_RESPONSIBILITY detection.
-    transaction_id = _safe(invoice.invoice_no)
+    # TransactionID: externe Auftragsnummer (Marketplace-Order-ID), Fallback auf
+    # interne JTL-Wawi-Auftragsnummer — beide bereits im DB-Layer in
+    # invoice.jtl_external_order_no zusammengeführt. Ermöglicht Suche im
+    # JTL-Frontend und Join mit DATEV-Export (gleiche Order-ID dort in Belegfeld 1).
+    # Falls weder externe noch interne Auftrnr existiert, fällt die Logik auf die
+    # Jera-PK-Konvention {R/SR/G/SRK/ER/EG}{kPK} zurück, damit die Spalte nie leer ist.
+    transaction_id = _safe(invoice.jtl_external_order_no or "")
+    if not transaction_id:
+        pk = invoice.jtl_primary_key
+        no_upper = (invoice.invoice_no or "").upper()
+        if pk is None:
+            transaction_id = _safe(invoice.invoice_no)
+        elif invoice.source == "jtl_own":
+            transaction_id = f"SR{pk}" if no_upper.startswith("SR") else f"R{pk}"
+        elif invoice.source == "jtl_external":
+            transaction_id = f"EG{pk}" if invoice.is_credit_note else f"ER{pk}"
+        elif invoice.source == "jtl_credit_note":
+            transaction_id = f"SRK{pk}" if no_upper.startswith("SRK") else f"G{pk}"
+        else:
+            transaction_id = _safe(invoice.invoice_no)
 
     row: list[str] = [
         str(pos_nr),                                    # Positions-Nr.

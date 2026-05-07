@@ -2,6 +2,13 @@
 
 ## Status
 
+**TransactionID-Konvention finalisiert + Q1-Reconciliation abgeschlossen (2026-05-07).**
+- TX-ID primär = externe Marketplace-Order-ID (Fallback interne Wawi-Auftragsnummer, letzter Fallback Jera-PK-Konvention).
+- SRK-Semantik verifiziert: Storno einer Rechnungskorrektur = Erlös (positives Vorzeichen).
+- Q1 2026 Engine vs. Jera: Δ nur −0,12 € Brutto (Cent-Rundung auf ca. 50 Belegen).
+- 182 Tests grün, ruff clean.
+- Siehe `docs/status.md` für Details.
+
 **Repository-Umstellung auf Header-Eckdaten (2026-05-06) abgeschlossen.**
 - SQL-Queries lesen Brutto/Netto direkt aus Eckdaten-Tabellen (`tRechnungEckdaten` / `tExternerBelegEckdaten` / `vGutschriftEckdaten`).
 - Position-Joins für Beträge entfallen; Coverage Q1 2026 = 100% (273 Gutschriften, 12.287 externe Belege, alle mit Eckdaten).
@@ -26,34 +33,34 @@
 
 ## Offene Punkte
 
-1. **Mixed-VAT-Pre-Flight-Check** (`jtl2datev mixed-vat-check --month YYYY-MM`): listet Belege mit gemischten Steuersätzen auf Artikel-Positionen (externe Belege typ=1, mit Vater-Referenz). **Q1 2026: 0 Belege mit Mixed-VAT.** Pre-Flight-Tooling-Item.
+0. **Mixed-VAT-Pre-Flight-Check** (`jtl2datev mixed-vat-check --month YYYY-MM`): listet Belege mit gemischten Steuersätzen auf Artikel-Positionen (externe Belege typ=1, mit Vater-Referenz). **Q1 2026: 0 Belege mit Mixed-VAT.** Pre-Flight-Tooling-Item.
 
-2. **`RawInvoiceLine`-Modell-Cleanup:** Item-Felder (sku, description, quantity, weight, manufacturer, commodity_code, …) entsorgen, da bei Header-Umstellung systematisch leer. Reines Refactoring, keine Verhaltensänderung.
+1. **`RawInvoiceLine`-Modell-Cleanup:** Item-Felder (sku, description, quantity, weight, manufacturer, commodity_code, …) entsorgen, da bei Header-Umstellung systematisch leer. Reines Refactoring, keine Verhaltensänderung.
 
-3. **DATEV-Export braucht Archiv- und Delta-Mechanismus** (analog DutyPay).
+2. **DATEV-Export braucht Archiv- und Delta-Mechanismus** (analog DutyPay).
    - `export` und `export-delta` CLI-Commands: nutzen vorhandenes `core/archive.py` (generisch, von DutyPay-Block).
    - Automatische Archivierung unter `exports/datev/<YYYY-MM>/` (nicht unter dutypay/). User hatte bisher Excel/PowerQuery-Methode.
 
-4. **Taxually-Export implementieren** — eigenständiger Exporter direkt aus JTL (nicht aus DutyPay-Output abgeleitet).
+3. **Taxually-Export implementieren** — eigenständiger Exporter direkt aus JTL (nicht aus DutyPay-Output abgeleitet).
    - **Format:** XLSX, Sheet `Your data`, 20 Spalten, Dezimaltrennzeichen Punkt, VAT-Rate dezimal (0,19 statt 19).
    - **Länderexporte:** Lokale Meldungen FR/IT/ES/PL/CZ/GB (parallel zum OSS).
    - **Refund-Vorzeichen:** negativ. Transaction-Types: `SALE`, `REFUND`, `SALE-REFUND` (Taxually-exklusiv), konsequent uppercase.
    - **Numerische Spalten:** konsequent Number-Typ schreiben (alte Excel-Skripte hatten Gross teils als String).
    - **Archiv/Delta:** nach Implementation analoge Funktionen nutzen wie DutyPay (gleiche `core/archive.py`-Basis).
 
-5. **Taxually-Archiv/Delta:** Sobald Exporter steht.
+4. **Taxually-Archiv/Delta:** Sobald Exporter steht.
 
-6. **Lager-Verbringungen (separates Tool, *nach* DutyPay+Taxually):** Eigene Eingangs- (Amazon-Transaktionsbericht) und Ausgangsdatei. Nicht aus JTL-DB ableitbar.
+5. **Lager-Verbringungen (separates Tool, *nach* DutyPay+Taxually):** Eigene Eingangs- (Amazon-Transaktionsbericht) und Ausgangsdatei. Nicht aus JTL-DB ableitbar.
 
-7. **Probebuchungen filtern (optional):** Belege mit Umsatz 0,00 € raus (z.B. SR202602155/156). Risk: Audit-Trail-Vollständigkeit vs. Noise-Reduktion.
+6. **Probebuchungen filtern (optional):** Belege mit Umsatz 0,00 € raus (z.B. SR202602155/156). Risk: Audit-Trail-Vollständigkeit vs. Noise-Reduktion.
 
-8. **Steuerberater-Klärung (User):** Beleginfo-Felder DATEV (aktuell Spalten 13-17 als Art/Inhalt 1-5). Prüfen ob auf Zusatzinformation-Spalten umsteigen soll (Jera nutzte andere Feldnamen).
+7. **Steuerberater-Klärung (User):** Beleginfo-Felder DATEV (aktuell Spalten 13-17 als Art/Inhalt 1-5). Prüfen ob auf Zusatzinformation-Spalten umsteigen soll (Jera nutzte andere Feldnamen).
 
-9. **VIES-Online-Validierung (langfristig):** Aktuell Format-Plausibilität. Echte VIES-API mit Cache für 100% B2B-Sicherheit.
+8. **VIES-Online-Validierung (langfristig):** Aktuell Format-Plausibilität. Echte VIES-API mit Cache für 100% B2B-Sicherheit.
 
-10. **Restliche DB-Klärungen:** `nSteuereinstellung` (0/10/15/20-Bedeutung), `tRechnungKorrektur`-Vollständigkeit (own invoices credit note logic), `tRechnungStorno`-Auswirkung auf `nIstStorniert`.
+9. **Restliche DB-Klärungen:** `nSteuereinstellung` (0/10/15/20-Bedeutung), `tRechnungKorrektur`-Vollständigkeit (own invoices credit note logic), `tRechnungStorno`-Auswirkung auf `nIstStorniert`.
 
-11. **Temu-Filter perspektivisch entfernen:** Laut User keine neuen Temu-Belege mehr seit Januar 2026. Der Filter kann komplett entfallen, sobald sichergestellt ist, dass kein neuer Temu-Import stattfindet. Hinweis in `docs/dutypay-format.md` aktualisieren.
+10. **Temu-Filter perspektivisch entfernen:** Laut User keine neuen Temu-Belege mehr seit Januar 2026. Der Filter kann komplett entfallen, sobald sichergestellt ist, dass kein neuer Temu-Import stattfindet.
 
 ## Notizen für Orchestrator
 

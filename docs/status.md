@@ -2,6 +2,34 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-07 — TransactionID-Konvention finalisiert + Q1-2026-Reconciliation abgeschlossen
+
+**TransactionID-Finalisierung:**
+- **Primär:** TX = `invoice.jtl_external_order_no` (Marketplace-Order-ID). Fallback im DB-Layer auf JTL-Wawi-interne Auftragsnummer (`tRechnungEckdaten.cAuftragsnummern`).
+- **Letzter Fallback:** Jera-PK-Konvention `{Prefix}{kPK}` (own: `R{kRechnung}`, Storno: `SR{kRechnung}`, external: `ER{kExternerBeleg}`, refund: `EG{kExternerBeleg}`, credit: `G{kGutschrift}`, storno-credit: `SRK{kGutschrift}`).
+- **Q1-Stichprobe Januar:** 5329 Belege → 3373 Wawi-IDs, 1547 Amazon, 187 Otto, 116 sonstige (eBay/Kaufland), 106 Temu. **0 PK-Fallbacks** ausgelöst.
+- Suchbar im JTL-Frontend; Join mit DATEV-Export möglich (gleiche Order-ID in Belegfeld 1).
+
+**DocumentID unverändert:** `cRechnungsnr` / `cBelegnr` / `cGutschriftNr`. Hinweis: Rechnungsnummern ohne Buchstaben-Prefix können in Excel Wissenschaftsnotation triggern.
+
+**SRK-Semantik verankert:**
+- Storno einer Rechnungskorrektur (Gutschrift-Belegnr mit Prefix "SRK") wird ökonomisch als **Erlös behandelt** → `is_credit_note=False` → SALE mit positivem Vorzeichen, deckungsgleich mit Jera-Buchung.
+- Begründung: Storno einer RK = Rückgängigmachung der Gutschrift. Beispielfall Kunde 11067353.
+- RawInvoice erweitert um `jtl_primary_key: int | None`.
+
+**Q1-2026-Reconciliation finale Ergebnisse:**
+- Engine Σ Brutto 272.308,33 € / Netto 230.384,79 € (14.001 Belege).
+- Jera-Ref (Hauptdateien JAN/FEB/MAR ohne _fehler.csv) Σ 272.308,45 € / 230.384,88 €.
+- **Δ = −0,12 € Brutto / −0,09 € Netto** = reine Cent-Rundungsdrift auf ~50 Belegen.
+- Buchungslogik bestätigt; bis Ende März **0 Engine-only-Belege mit Wert ≠ 0** (4 Engine-only Belege haben Σ 0,00 €, Probebuchungen).
+- `DutyPay_Diff_01.csv` ist kein eigenständiger Block, sondern User-Korrekturschleife (darf nicht mit-summiert werden).
+
+**Temu-Filter perspektivisch:** Aus DB-Query `_SQL_OWN` entfernt, sitzt jetzt ausschließlich in `core/datev.py` (DutyPay-Spec verlangt vollständige Auslandsverkaufs-Liste; OSS-irrelevant).
+
+**Tests:** 182/3 grün (8 neue Tests in `TestTransactionID`), ruff clean.
+
+---
+
 ## 2026-05-06 — Repository-Umstellung auf Header-Eckdaten
 
 **Was:** SQL-Queries in `core/db_jtl.py` (`_SQL_OWN`, `_SQL_EXTERNAL`, `_SQL_CREDIT_NOTES`) lesen Brutto/Netto direkt aus den Eckdaten-Tabellen / -View; Position-Joins entfallen. Pro Beleg wird eine synthetische Single-Line mit Header-Werten + abgeleiteter VAT-Rate erzeugt.

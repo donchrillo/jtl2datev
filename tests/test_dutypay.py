@@ -341,15 +341,43 @@ class TestTransactionID:
             row = next(reader)
         return row[header.index("TransactionID")]
 
-    def test_transaction_id_is_invoice_no(self) -> None:
-        inv = _invoice(invoice_no="R1252980")
+    def test_transaction_id_is_external_order_no(self) -> None:
+        inv = _invoice(invoice_no="R1252980", external_order_no="404-5433421-0313123")
+        assert self._get_transaction_id(inv) == "404-5433421-0313123"
+
+    def test_transaction_id_falls_back_to_pk_when_no_order(self) -> None:
+        inv = _invoice(invoice_no="R1252980", external_order_no=None)
+        inv = inv.model_copy(update={"jtl_primary_key": 1252980})
         assert self._get_transaction_id(inv) == "R1252980"
 
-    def test_transaction_id_not_external_order_no(self) -> None:
-        # External marketplace order IDs (Amazon format) must not appear as TransactionID.
-        inv = _invoice(invoice_no="ER142430", external_order_no="404-5433421-0313123")
-        assert self._get_transaction_id(inv) == "ER142430"
-        assert self._get_transaction_id(inv) != "404-5433421-0313123"
+    def test_transaction_id_external_uses_marketplace_order(self) -> None:
+        inv = _invoice(invoice_no="DE6000RBNL56FU", external_order_no="404-5433421-0313123")
+        inv = inv.model_copy(update={"source": "jtl_external", "jtl_primary_key": 146496})
+        assert self._get_transaction_id(inv) == "404-5433421-0313123"
+
+    def test_transaction_id_storno_credit_note_uses_internal_order(self) -> None:
+        # SRK ohne Marketplace-Order: Fallback ist die Wawi-interne Auftragsnr aus
+        # tRechnungEckdaten.cAuftragsnummern, die im DB-Layer schon in
+        # jtl_external_order_no fließt.
+        inv = _invoice(invoice_no="SRK20260239", external_order_no="21-12042-08233")
+        inv = inv.model_copy(update={"source": "jtl_credit_note", "jtl_primary_key": 742273})
+        assert self._get_transaction_id(inv) == "21-12042-08233"
+
+    def test_transaction_id_fallback_pk_storno_own(self) -> None:
+        # Edge-case: weder externe noch interne Auftragsnr → SR{kRechnung}-Fallback
+        inv = _invoice(invoice_no="SR202650099999", external_order_no=None)
+        inv = inv.model_copy(update={"jtl_primary_key": 999999})
+        assert self._get_transaction_id(inv) == "SR999999"
+
+    def test_transaction_id_fallback_pk_storno_credit_note(self) -> None:
+        inv = _invoice(invoice_no="SRK20260239", external_order_no=None)
+        inv = inv.model_copy(update={"source": "jtl_credit_note", "jtl_primary_key": 742253})
+        assert self._get_transaction_id(inv) == "SRK742253"
+
+    def test_transaction_id_fallback_pk_external_refund(self) -> None:
+        inv = _invoice(invoice_no="XRK-181", is_credit_note=True, external_order_no=None)
+        inv = inv.model_copy(update={"source": "jtl_external", "jtl_primary_key": 149395})
+        assert self._get_transaction_id(inv) == "EG149395"
 
     def test_document_id_unchanged(self) -> None:
         inv = _invoice(invoice_no="R-DE-249030238-2026-1", external_order_no="404-5433421-0313123")
@@ -361,7 +389,7 @@ class TestTransactionID:
             header = next(reader)
             row = next(reader)
         assert row[header.index("DocumentID")] == "R-DE-249030238-2026-1"
-        assert row[header.index("TransactionID")] == "R-DE-249030238-2026-1"
+        assert row[header.index("TransactionID")] == "404-5433421-0313123"
 
 
 # ── Header / column count test ────────────────────────────────────────────────
