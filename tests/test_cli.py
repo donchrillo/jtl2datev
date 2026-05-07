@@ -198,3 +198,60 @@ def test_mixed_vat_check_both_month_and_from_to_fails() -> None:
 def test_mixed_vat_check_from_without_to_fails() -> None:
     result = CliRunner().invoke(main, ["mixed-vat-check", "--from", "2026-01-01"])
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# export-delta
+# ---------------------------------------------------------------------------
+
+
+def test_export_delta_help_shows_both_date_options() -> None:
+    result = CliRunner().invoke(main, ["export-delta", "--help"])
+    assert result.exit_code == 0
+    assert "--month" in result.output
+    assert "--from" in result.output
+    assert "--to" in result.output
+
+
+def test_export_delta_no_date_arg_fails() -> None:
+    result = CliRunner().invoke(main, ["export-delta"])
+    assert result.exit_code != 0
+
+
+def test_export_delta_both_month_and_from_to_fails() -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "export-delta",
+            "--month", "2026-01",
+            "--from", "2026-01-01",
+            "--to", "2026-01-31",
+        ],
+    )
+    assert result.exit_code != 0
+
+
+def test_export_delta_from_without_to_fails() -> None:
+    result = CliRunner().invoke(main, ["export-delta", "--from", "2026-01-01"])
+    assert result.exit_code != 0
+
+
+def test_export_delta_from_to_without_out_fails() -> None:
+    """--from/--to without --out must fail."""
+    result = CliRunner().invoke(
+        main, ["export-delta", "--from", "2026-01-01", "--to", "2026-01-31"]
+    )
+    assert result.exit_code != 0
+
+
+def test_export_delta_from_to_without_baseline_fails() -> None:
+    """--from/--to without --baseline must fail."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+        out = f.name
+    result = CliRunner().invoke(
+        main,
+        ["export-delta", "--from", "2026-01-01", "--to", "2026-01-31", "--out", out],
+    )
+    assert result.exit_code != 0
