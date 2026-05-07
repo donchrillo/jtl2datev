@@ -20,9 +20,21 @@ def version() -> None:
 
 
 @main.command("export")
-@click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option("--to", "date_to", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option("--out", "out_path", required=True, type=click.Path(path_type=Path))
+@click.option(
+    "--month",
+    "month_str",
+    required=True,
+    metavar="YYYY-MM",
+    help="Monat des Exports, z.B. 2026-01.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    required=False,
+    default=None,
+    type=click.Path(path_type=Path),
+    help="Ausgabepfad. Standard: exports/datev/YYYY-MM.csv",
+)
 @click.option(
     "--compare-to",
     "compare_to",
@@ -41,23 +53,27 @@ def version() -> None:
     "den Steuerberater wieder entfernen.",
 )
 def export_cmd(
-    date_from: date,
-    date_to: date,
-    out_path: Path,
+    month_str: str,
+    out_path: Path | None,
     compare_to: Path | None,
     audit: bool,
 ) -> None:
     """Exportiert Rechnungen aus JTL als DATEV-CSV."""
-    import datetime as dt
-
     from jtl2datev.core.config import Settings
     from jtl2datev.core.datev import load_compare_map, write_extf_buchungsstapel
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
     from jtl2datev.core.models import LineDecision
     from jtl2datev.core.tax_engine import decide
 
-    df = date_from.date() if isinstance(date_from, dt.datetime) else date_from  # type: ignore[union-attr]
-    dt_ = date_to.date() if isinstance(date_to, dt.datetime) else date_to  # type: ignore[union-attr]
+    year, month = _parse_month(month_str)
+    df, dt_ = _month_date_range(year, month)
+
+    effective_out: Path
+    if out_path is not None:
+        effective_out = Path(out_path)
+    else:
+        effective_out = Path("exports/datev") / f"{month_str}.csv"
+    effective_out.parent.mkdir(parents=True, exist_ok=True)
 
     settings = Settings()
 
@@ -77,7 +93,7 @@ def export_cmd(
         invoices_iter = repo.fetch_invoices(date_from=df, date_to=dt_)
         report = write_extf_buchungsstapel(
             invoices_iter,
-            out_path=out_path,
+            out_path=effective_out,
             settings=settings,
             date_from=df,
             date_to=dt_,
@@ -85,7 +101,7 @@ def export_cmd(
             compare_map=compare_map,
             audit=audit,
         )
-        click.echo(f"DATEV-Export geschrieben: {out_path}")
+        click.echo(f"DATEV-Export geschrieben: {effective_out}")
         click.echo(f"  Buchungen: {report.bookings_written}")
         click.echo(f"  Belege geskippt (Fehler):    {report.skipped_error}")
         click.echo(f"  Belege geskippt (unbekannt): {report.skipped_unknown}")
