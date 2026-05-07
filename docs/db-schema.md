@@ -410,6 +410,23 @@ Relevante Codes (gekürzt):
 
 Vollständige Liste: `SELECT * FROM dbo.tPlattform ORDER BY nPlattform`.
 
+### Plattform-Mapping für MarketZone (Q1 2026)
+
+**Tabelle `dbo.tPlattform`** mit `nPlattform` (Key) und `cName`. Mapping in `core/db_jtl.py:_PLATFORM_COUNTRY` wird in `RawInvoice.marketplace_country` gespeichert.
+
+| nPlattform | cName              | Marketplace-Land | Hinweis |
+|------------|--------------------|--------|---------|
+| 50         | Amazon (generisch) | Fallback Lager-Land | unbekannte Amazon-Variante |
+| 51         | Amazon.de          | DE     | |
+| 53         | Amazon.co.uk       | GB     | |
+| 54         | Amazon.fr          | FR     | |
+| 56         | Amazon.it          | IT     | |
+| 57         | Amazon.es          | ES     | |
+| 60         | Amazon.nl          | NL     | |
+| 62         | Amazon.se          | SE     | |
+| 63         | Amazon.pl          | PL     | |
+| 65         | Amazon.com.be      | BE     | |
+
 ## Gutschriften / Rechnungskorrektur (erkundet 2026-05-05)
 
 JTL nennt Gutschriften und Rechnungskorrekturen synonym. Die Datenstruktur:
@@ -499,6 +516,18 @@ JTL hat zum **1. November 2024** die Ablage von Amazon-Rechnungen geändert:
 - Beide Quellen parallel lesen — sie sind ab 2024-11 **disjunkt** (keine
   Dubletten erwartet, da tExternerBeleg-Belege beim Löschen wirklich entfernt
   und erst dann in tRechnung neu erzeugt werden).
+
+## Position-Tabellen für Mixed-VAT-Check
+
+Die Pre-Flight-Command `mixed-vat-check` listet Belege auf, die auf Hauptpositionen (nicht Bundle-Kinder) unterschiedliche Steuersätze haben.
+
+| Beleg-Typ | Tabelle | Position-Spalte (MwSt-Satz) | Vater-Filter | Brutto-Spalte |
+|-----------|---------|-------|--------|------|
+| Eigene Rechnung | `Rechnung.tRechnungPosition` | `fMwSt` (Satz in %) | `kKonfigVaterRechnungPos IS NULL AND kStuecklisteRechnungPos = 0` | `fVkBruttoGesamt` |
+| Externe Rechnung | `Rechnung.tExternerBelegPosition` | `fMwStSatz` (Satz in %) | `kExternerBelegPositionVater IS NULL` | `fVkBrutto` |
+| Gutschrift (eigene) | `dbo.tGutschriftPos` | `fMwSt` (Satz in %) | `kGutschriftStueckliste = 0` | `fVkBruttoGesamt` |
+
+**Ergebnis Q1 2026:** 0 Treffer in allen drei Beleg-Typen — keine gemischten Steuersätze gefunden.
 
 ## Architektonische Konsequenz
 

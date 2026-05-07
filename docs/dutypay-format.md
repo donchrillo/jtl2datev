@@ -2,7 +2,7 @@
 
 > Spezifikation für OSS-Meldungsdatei (Mehrwertsteuermeldungen).
 > Basiert auf Reverse-Engineering der Jera-Outputs (`samples/jera/DutyPay-SALE-2026-*.csv`) und DATEV-Pflichtfeld-Spec.
-> Stand: 2026-05-06.
+> Stand: 2026-05-07.
 
 ## Überblick & Scope
 
@@ -44,7 +44,7 @@ Profile 2–4 sind **out of scope**: Sie wurden früher als Vollkunden-Pakete an
 |---|---|---|---|---|---|---|
 | Positions-Nr. | int | `1` | 100% | seq | Fortlaufende Nummer je Position innerhalb Datei | Pflicht |
 | **KindOfBusiness** | enum | `SALE`, `REFUND`, `B2B`, `EXPORT`, `B2B-REFUND`, `EXPORT-REFUND` | 100% | Regel-Engine (s.u.) | Entscheidungsbaum nach Lager/Ziel/Kundentyp | Pflicht |
-| **TransactionID** | nvarchar | `404-5433421-0313123` oder `21-12042-08233` | 100% | JTL externe Auftragsnummer (Marketplace-Order-ID, ohne `_N`-Suffix), Fallback Wawi-interne Auftragsnummer | Marktplatz-Order-ID (Amazon `404-…`, Otto `cbn4…`, etc.) **ohne Mehrteil-Suffix** (JTL speichert z.B. `406-0538474-1507531_1`, wird zu `406-0538474-1507531`); ohne Marketplace-Bezug die JTL-Wawi-Auftragsnummer (z.B. `21-12042-08233`). Ermöglicht Suche im JTL-Frontend und Join mit DATEV-Export (gleiche ID dort in Belegfeld 1). Letzter Fallback `{R/SR/G/SRK/ER/EG}{kPK}` falls keine Auftragsnr existiert. Eindeutigkeit pro Beleg liegt in DocumentID. | Optional |
+| **TransactionID** | nvarchar | `406-0538474-1507531` oder `cbn4wjs65s` | 100% | `cExterneAuftragsnummer` ohne `_N`-Suffix | **Marketplace-Order-ID (Amazon, Otto, etc.) ohne Mehrteil-Suffix.** JTL speichert Mehrteil-Marketplace-Sendungen mit `_1`, `_2`, etc. (z.B. `406-0538474-1507531_1`), Engine schreibt nur die Basis-Order-ID (z.B. `406-0538474-1507531`). Ermöglicht Suche im JTL-Frontend und Join mit DATEV-Export (gleiche ID dort in Belegfeld 1). Eindeutigkeit pro Beleg liegt in DocumentID. | Optional |
 | **DocumentID** | nvarchar | `R-DE-249030238-2026-1` | 100% | JTL Belegnummer (eindeutig) | Eindeutiger Beleg-Key für Grouping. Eigene Rechnungsnummern haben kein Buchstaben-Prefix → Excel kann auf reine Ziffernfolgen mit Wissenschaftsnotation reagieren. | Pflicht |
 | **ReportingPeriod** | nvarchar | `2026-JAN` | 100% | Belegdatum Monat | Format: `YYYY-MMM` (JAN/FEB/MAR…/DEC). Siehe Datumsregel (Sektion unten). | Bedingt |
 | **DepartureDate** | date | `02.01.2026` | 100% | JTL `dErstellt` / `dBelegdatumUtc` | Versand-/Beleg-Datum. Mind. 1 von {ReportingPeriod, DepartureDate, ArrivalDate} erforderlich. | Bedingt |
@@ -57,18 +57,18 @@ Profile 2–4 sind **out of scope**: Sie wurden früher als Vollkunden-Pakete an
 | **SourceZoneZip** | nvarchar | `38899` | ~40% | JTL Lagerort-PLZ | postleitzahl des Lagers — praktisch oft leer | Optional |
 | **SourceZoneVatID** | nvarchar | `DE249030238` | ~50% | JTL `cUstId` (Eigene USt-IdNr. des Lagers) | Unsere lokale USt-IdNr. des Lagers. **(Pflicht) bei PURCHASE / PURCHASE-REFUND / PURCHASE-CROSSBORDER / COMMINGLING-BUY / COMMINGLING-BUY-RC.** Leer bei B2C SALE. | Bedingt |
 | **SourceZoneVatRate** | decimal % | `19`, `20`, `21`, `22`, `23` | ~50% | abgeleitet | Steuersatz des Lagers (z.B. für Domestic oder bei B2B zur Verifikation) | Optional |
-| **SourceZoneCurrencyCode** | ISO-4217 | `EUR`, `PLN`, `CZK` | ~50% | JTL `cVersandlandWaehrung` | Währung des Lagers (bei Nicht-EUR-Lager) | Pflicht |
+| **SourceZoneCurrencyCode** | ISO-4217 | `EUR`, `PLN`, `CZK` | ~50% | Lager-Land → ISO-4217 Lookup-Tabelle | **Aus dem Lagerland abgeleitet** (nicht aus der Beleg-Währung). EU-Lager → EUR; CZ → CZK; PL → PLN; SE → SEK; GB → GBP; etc. | Pflicht |
 | **SourceZoneGross** | decimal | leer im Sample | <1% | abgeleitet | Brutto im Lagerland — praktisch nie gefüllt | Optional |
 | **SourceZoneNet** | decimal | leer im Sample | <1% | abgeleitet | Netto im Lagerland — praktisch nie gefüllt | Optional |
 | **TargetZone** | ISO-2 | `DE`, `IT`, `FR`, `BE`, `CH` | 100% | JTL Lieferadress-Land | Bestimmungsland (Kundenadresse) | Pflicht |
 | **TargetZoneZip** | nvarchar | (leer) | 0% | — | leer (Profil 1 / Invoice-Granularität) | Optional |
 | **TargetZoneVatID** | nvarchar | `IT05041920967`, `ATU49548100`, leer | ~30% | JTL `cKundeUstId` | **(Pflicht) bei B2B / B2B-REFUND** mit Reverse-Charge. B2C/OSS: leer. | Bedingt |
 | **TargetZoneVatRate** | decimal % | `19`, `20`, `22`, `23`, `24` | ~60% | abgeleitet | Steuersatz des Bestimmungslandes. Leer bei B2B Reverse-Charge (0%). | Optional |
-| **TargetZoneCurrencyCode** | ISO-4217 | `EUR` | ~60% | abgeleitet | Währung Zielland (praktisch immer EUR in Samples) | Pflicht |
+| **TargetZoneCurrencyCode** | ISO-4217 | `EUR`, `GBP`, `SEK`, etc. | ~60% | Empfänger-Land → ISO-4217 Lookup-Tabelle | **Aus dem Empfänger-Land abgeleitet** (nicht aus der Beleg-Währung). EU-Empfänger in EUR-Zone → EUR; UK-Empfänger → GBP; etc. | Pflicht |
 | **TargetZoneGross** | decimal | leer im Sample | <1% | abgeleitet | Brutto im Zielland — praktisch nie gefüllt | Optional |
 | **TargetZoneNet** | decimal | leer im Sample | <1% | abgeleitet | Netto im Zielland — praktisch nie gefüllt | Optional |
-| **MarketZone** | ISO-2 | `DE`, `IT`, `FR`, `PL`, `CZ`, `ES` | 100% | abgeleitet | **Marktplatz-Registrierungsland**. Heuristik: `KindOfBusiness ∈ {SALE, REFUND}` → `TargetZone` (Kundenland); `KindOfBusiness ∈ {B2B, EXPORT, B2B-REFUND, EXPORT-REFUND}` → `SourceZone` (Lagerland). *Verifizierung:* MarketZone ist pro DocumentID konstant (13387/13388 Belege bestätigt). | Pflicht |
-| **MarketZoneCurrencyCode** | ISO-4217 | `EUR`, `PLN` | 100% | JTL Belegwährung | Rechnungswährung | Pflicht |
+| **MarketZone** | ISO-2 | `DE`, `IT`, `FR`, `PL`, `CZ`, `ES`, `GB` | 100% | Plattform-Land Mapping | **Marktplatz-Registrierungsland aus `marketplace_country`** (abgeleitet von `kPlattform` über Mapping in `core/db_jtl.py`). 10 Amazon-Sites: `Amazon.de`→DE, `Amazon.fr`→FR, `Amazon.it`→IT, `Amazon.es`→ES, `Amazon.com.be`→BE, `Amazon.nl`→NL, `Amazon.se`→SE, `Amazon.pl`→PL, `Amazon.co.uk`→GB. Generisches `Amazon` und unbekannte Plattformen: Fallback Lager-Land. *Verifizierung:* MarketZone ist pro DocumentID konstant (13387/13388 Belege bestätigt). | Pflicht |
+| **MarketZoneCurrencyCode** | ISO-4217 | `EUR`, `PLN`, `GBP`, `SEK`, `CZK` | 100% | MarketZone-Land → ISO-4217 | **Aus dem MarketZone-Land abgeleitet** (nicht aus der Beleg-Währung). | Pflicht |
 | **MarketZoneGross** | decimal | `19,95`, `202,00`, `-16,22` | 100% | JTL Beleg-Aggregat | **Beleg-Brutto** (Summe über alle Positionen) — Vorzeichen: negativ bei REFUND/B2B-REFUND/EXPORT-REFUND. **Mind. 1 Betrag** (Source/Target/MarketZone Gross/Net) erforderlich. | Bedingt |
 | **MarketZoneNet** | decimal | `16,76`, `202,00`, `-13,63` | 100% | JTL Beleg-Aggregat | **Beleg-Netto** (Summe über alle Positionen) — Vorzeichen: negativ bei REFUND. **Mind. 1 Betrag** erforderlich. | Bedingt |
 | **ItemID** | nvarchar | (leer) | 0% | — | leer (Profil 1 / Invoice-Granularität) | Optional |

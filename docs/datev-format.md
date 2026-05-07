@@ -3,6 +3,8 @@
 > Reverse-Engineered aus dem Jera-Beispielexport
 > `samples/jera/EXTF_Buchungsstapel_Belege_202603_20260407132743_1.csv`
 > (März 2026, 4 807 Buchungen).
+> 
+> Stand: 2026-05-07.
 
 ## Format-Variante
 
@@ -58,7 +60,10 @@ Wir füllen primär:
 |---|---|---|
 | 1 | Umsatz (ohne S/H) | Brutto, immer **positiv** mit Komma-Dezimaltrennzeichen (Vorzeichen über Soll/Haben) |
 | 2 | Soll/Haben-Kennzeichen | `S` für Rechnungen, `H` für Gutschriften |
-| 3 | WKZ Umsatz | leer (Default = EUR) |
+| 3 | WKZ Umsatz | **Bei EUR-Belegen leer; bei Fremdwährung ISO-4217-Code** (z.B. `GBP`, `PLN`, `SEK`, `CZK`). Engine befüllt aus `invoice.currency_factor`. |
+| 4 | Kurs | **Bei EUR-Belegen leer; bei Fremdwährung Wechselkurs aus JTL** (`fWaehrungsfaktor`, Format: 4 Nachkommastellen, Komma als Dezimaltrenner — z.B. `0,8719`). |
+| 5 | Basis-Umsatz | **Bei EUR-Belegen leer; bei Fremdwährung Original-Brutto in EUR umgerechnet** (Format: 2 Nachkommastellen, Komma — z.B. `25,53`). Beispiel: GBP-Beleg `FR500071NL56FD` mit Brutto 22,26 GBP, Kurs 0,8719 → Basis-Umsatz 25,53 EUR. |
+| 6 | WKZ Basis-Umsatz | **Bei EUR-Belegen leer; bei Fremdwährung `EUR`**. |
 | 7 | **Konto** | Debitor-Sammelkonto (8-stellig, s.u.) |
 | 8 | **Gegenkonto** | Erlöskonto (7-stellig) |
 | 9 | **BU-Schlüssel** | leer / `240` / `241` / `285` (s.u.) |
@@ -263,6 +268,26 @@ Vor Übergabe an Steuerberater entfernen.
 - `THIRD-EU-{wh}-{dest}` – Drittland aus EU-Lager
 - `THIRD-DE-{dest}` – Drittland aus DE-Lager
 - `ERROR` / `UNKNOWN` – Marker für skippte Belege (kein Treatment, Fehler in Rohfakten)
+
+## CLI / Workflow
+
+Standardablauf für Monats-Export:
+
+```bash
+# 1. Vorprüfung: gemischte Steuersätze
+jtl2datev mixed-vat-check --month YYYY-MM
+
+# 2. Reconciliation (Engine ↔ JTL)
+jtl2datev reconcile --month YYYY-MM
+
+# 3. Hauptexport (archiviert automatisch unter exports/datev/<YYYY-MM>/)
+jtl2datev export --month YYYY-MM
+
+# 4. Delta-Export (falls nachgelagerte Belege)
+jtl2datev export-delta --month YYYY-MM
+```
+
+DATEV-Archive: `exports/datev/<YYYY-MM>.csv` (aktueller Stand), `exports/datev/<YYYY-MM>/<timestamp>.csv` (Baseline für Delta-Vergleich).
 
 ## Sondervorgänge
 
