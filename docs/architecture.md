@@ -119,3 +119,60 @@ Die Engine bekommt nur Fakten, **nie** JTLs Steuerentscheidung als Input
 - Mandant, Berater, Sachkonten-Längen, Buchungsperioden-Format
 - Konten-Mapping je Lagerland × Kundentyp × Steuersatz
 - Beispiel-Export aus Jera-Tool (zum Abgleich)
+
+## Migration ins TOCI-ERP (FastAPI + React 19)
+
+Die hier aufgebaute Logik wandert 1:1 ins künftige ERP-System. Heute ist `jtl2datev` ein konsolen-gesteuertes Tool, später wird die gleiche Geschäftslogik über HTTP-APIs verfügbar sein. Dank strikter Framework-Unabhängigkeit (keine CLI-Importe im `core/`) passiert der Umzug ohne Code-Umschreiben.
+
+### Schichten-Mapping
+
+| Schicht                              | Heute                            | Im ERP-System                                |
+|--------------------------------------|----------------------------------|-----------------------------------------------|
+| Geschäftslogik (framework-agnostisch)| `src/jtl2datev/core/*.py`        | `backend/core/modules/jtl2datev/` (oder analog) |
+| DB-Adapter (swappable)               | `core/repositories.py` (ABC) → `core/db_jtl.py` (MSSQL) | Neue Impl. `core/db_toci.py` gegen eigenes ERP-Schema, Interface bleibt |
+| CLI-Wrapper                          | `src/jtl2datev/cli.py` (Click)   | Wegfällt — durch FastAPI-Routen ersetzt        |
+| Konfiguration                        | `core/config.py` (Pydantic Settings) | bleibt, ggf. via FastAPI-Dependency-Injection |
+| Filesystem-Archive                   | `core/archive.py` (lokales FS)   | bei Bedarf S3/Object-Storage-Adapter, isolierte Schicht |
+
+### Warum der Umzug sauber läuft
+
+**`core/` ist heute bereits framework-frei:**
+- Kein `click`, kein `print()` — ausschließlich `logging`.
+- DB-Engine wird per Konstruktor injiziert: `JtlInvoiceRepository(engine)`. In FastAPI direkt per `Depends()` bereitstellbar.
+- Pipeline-Funktionen (`write_dutypay_csv`, `compute_delta`, `write_extf_csv`) arbeiten mit Iterator/Iterable, schreiben Output — reine Library-Calls, keine CLI-Funktionen.
+
+**Beispiel: CLI heute vs. FastAPI morgen**
+
+Heute (Click-basiert):
+```
+jtl2datev export-dutypay --month 2026-01 --out /tmp
+```
+
+Morgen (FastAPI-basiert):
+```python
+@router.post("/exports/dutypay")
+async def export_dutypay(month: str, repo: InvoiceRepository = Depends(get_repo)):
+    date_from, date_to = parse_month(month)
+    invoices = repo.fetch_invoices(date_from=date_from, date_to=date_to)
+    write_dutypay_csv(invoices, out_path=tmp_path, own_vat_ids=settings.own_vat_ids)
+    archived = archive_export(tmp_path, ...)
+    return {"path": str(archived), "rows": ...}
+```
+
+**Das Entscheidende:** Beide rufen **dieselbe** `write_dutypay_csv`-Funktion. Logik-Code wandert 1:1, nur der Wrapper wechselt.
+
+### Migrations-Checkliste
+
+1. **`core/db_jtl.py` → `core/db_toci.py`**: Heute SQLAlchemy + MSSQL gegen JTL-Schema. Später neue Repo-Implementation gegen TOCI-ERP-Schema. Die Schnittstelle (`InvoiceRepository`) bleibt; `fetch_invoices()` liefert dieselben `RawInvoice`-Objekte.
+
+2. **Geschäftslogik unverändert**: `dutypay.py`, `datev.py`, `tax_engine.py`, `rules.py` — alle bleiben wie sie sind.
+
+3. **`core/config.py`** (`Settings`, Pydantic v2) passt direkt in FastAPI als Dependency.
+
+4. **`core/archive.py`** ggf. um Object-Storage-Adapter erweitern (S3, GCS) — oder lokal-FS-Version beibehalten.
+
+5. **Tests**: Bestehende Unit-Tests in `tests/` bleiben gültig. Sie testen Library-Funktionen direkt, nicht die CLI.
+
+### Kernaussage
+
+Was hier in `jtl2datev` gebaut wird, ist effektiv schon das spätere `backend/core/modules/jtl2datev/` des ERP. Nur `cli.py` fällt weg, und `db_jtl.py` wird perspektivisch durch `db_toci.py` ergänzt oder ersetzt. Alle übrigen Module — Steuern, Regeln, DATEV-Export — wandern ohne Änderung mit.
