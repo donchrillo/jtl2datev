@@ -1,6 +1,6 @@
 import csv
+import datetime as dt
 import logging
-from datetime import date
 from pathlib import Path
 
 import click
@@ -23,9 +23,26 @@ def version() -> None:
 @click.option(
     "--month",
     "month_str",
-    required=True,
+    required=False,
+    default=None,
     metavar="YYYY-MM",
     help="Monat des Exports, z.B. 2026-01.",
+)
+@click.option(
+    "--from",
+    "date_from",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Startdatum (inkl.), z.B. 2026-01-01.",
+)
+@click.option(
+    "--to",
+    "date_to",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Enddatum (inkl.), z.B. 2026-01-31.",
 )
 @click.option(
     "--out",
@@ -33,7 +50,7 @@ def version() -> None:
     required=False,
     default=None,
     type=click.Path(path_type=Path),
-    help="Ausgabepfad. Standard: exports/datev/YYYY-MM.csv",
+    help="Ausgabepfad. Standard: exports/datev/YYYY-MM.csv (oder YYYY-MM-DD_YYYY-MM-DD.csv bei --from/--to).",
 )
 @click.option(
     "--compare-to",
@@ -53,7 +70,9 @@ def version() -> None:
     "den Steuerberater wieder entfernen.",
 )
 def export_cmd(
-    month_str: str,
+    month_str: str | None,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
     out_path: Path | None,
     compare_to: Path | None,
     audit: bool,
@@ -65,14 +84,15 @@ def export_cmd(
     from jtl2datev.core.models import LineDecision
     from jtl2datev.core.tax_engine import decide
 
-    year, month = _parse_month(month_str)
-    df, dt_ = _month_date_range(year, month)
+    df, dt_ = _resolve_date_range(date_from, date_to, month_str)
 
     effective_out: Path
     if out_path is not None:
         effective_out = Path(out_path)
-    else:
+    elif month_str is not None:
         effective_out = Path("exports/datev") / f"{month_str}.csv"
+    else:
+        effective_out = Path("exports/datev") / f"{df}_{dt_}.csv"
     effective_out.parent.mkdir(parents=True, exist_ok=True)
 
     settings = Settings()
@@ -122,24 +142,63 @@ def _parse_month(month_str: str) -> tuple[int, int]:
         raise SystemExit(1)
 
 
-def _month_date_range(year: int, month: int) -> "tuple":
-    import datetime as _dt
-
-    date_from = _dt.date(year, month, 1)
+def _month_date_range(year: int, month: int) -> tuple[dt.date, dt.date]:
+    date_from = dt.date(year, month, 1)
     if month == 12:
-        date_to_excl = _dt.date(year + 1, 1, 1)
+        date_to_excl = dt.date(year + 1, 1, 1)
     else:
-        date_to_excl = _dt.date(year, month + 1, 1)
-    return date_from, date_to_excl - _dt.timedelta(days=1)
+        date_to_excl = dt.date(year, month + 1, 1)
+    return date_from, date_to_excl - dt.timedelta(days=1)
+
+
+def _resolve_date_range(
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
+    month_str: str | None,
+) -> tuple[dt.date, dt.date]:
+    """Validate and resolve date input. Exactly one of (--from + --to) or
+    --month must be provided. Returns (date_from, date_to_inclusive)."""
+    has_range = date_from is not None and date_to is not None
+    has_partial_range = (date_from is None) ^ (date_to is None)
+    has_month = month_str is not None
+
+    if has_partial_range:
+        raise click.BadParameter("--from und --to müssen zusammen angegeben werden.")
+    if has_month and has_range:
+        raise click.BadParameter("Entweder --month oder --from/--to, nicht beides.")
+    if not has_month and not has_range:
+        raise click.BadParameter("Bitte entweder --month YYYY-MM oder --from/--to angeben.")
+    if has_month:
+        year, month = _parse_month(month_str)  # type: ignore[arg-type]
+        return _month_date_range(year, month)
+    assert date_from is not None and date_to is not None
+    return date_from.date(), date_to.date()
 
 
 @main.command("export-dutypay")
 @click.option(
     "--month",
     "month_str",
-    required=True,
+    required=False,
+    default=None,
     metavar="YYYY-MM",
-    help="Monat des Exports, z.B. 2026-01.",
+    help="Monat des Exports, z.B. 2026-01. Aktiviert automatische Archivierung.",
+)
+@click.option(
+    "--from",
+    "date_from",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Startdatum (inkl.), z.B. 2026-01-01. Erfordert --out.",
+)
+@click.option(
+    "--to",
+    "date_to",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Enddatum (inkl.), z.B. 2026-01-31. Erfordert --out.",
 )
 @click.option(
     "--out",
@@ -147,48 +206,63 @@ def _month_date_range(year: int, month: int) -> "tuple":
     required=False,
     default=None,
     type=click.Path(path_type=Path),
-    help="Optionaler zusätzlicher Ausgabepfad (neben der automatischen Archivierung).",
+    help="Ausgabepfad. Pflichtfeld bei --from/--to (kein Archiv). Bei --month: optionaler Zusatz-Pfad.",
 )
-def export_dutypay_cmd(month_str: str, out_path: Path | None) -> None:
-    """Exportiert Rechnungen aus JTL als DutyPay OSS-CSV (+ automatische Archivierung)."""
+def export_dutypay_cmd(
+    month_str: str | None,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
+    out_path: Path | None,
+) -> None:
+    """Exportiert Rechnungen aus JTL als DutyPay OSS-CSV.
+
+    Mit --month: automatische Archivierung unter exports/dutypay/YYYY-MM/.
+    Mit --from/--to: kein Archiv, --out ist Pflicht.
+    """
+    import shutil
     import tempfile
 
-    from jtl2datev.core.archive import archive_export
     from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
     from jtl2datev.core.dutypay import dutypay_filename, write_dutypay_csv
 
-    year, month = _parse_month(month_str)
-    date_from, date_to_incl = _month_date_range(year, month)
+    date_from_d, date_to_d = _resolve_date_range(date_from, date_to, month_str)
+
+    use_archive = month_str is not None
+    if not use_archive and out_path is None:
+        raise click.UsageError("Bei --from/--to ist --out Pflicht (kein automatisches Archiv).")
+
     settings = Settings()
 
-    # Write to a temp file first, then archive + optional copy to --out.
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
         tmp_path = Path(tmp.name)
 
     try:
         engine = make_engine(settings)
         repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=date_from, date_to=date_to_incl)
+        invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
         report = write_dutypay_csv(
             invoices_iter,
             out_path=tmp_path,
             own_vat_ids=settings.own_vat_ids,
         )
 
-        archived = archive_export(
-            tmp_path,
-            archive_root=settings.export_archive_root,
-            kind="dutypay",
-            period=month_str,
-        )
-        click.echo(f"DutyPay-Export archiviert: {archived}")
+        if use_archive:
+            from jtl2datev.core.archive import archive_export
+
+            archived = archive_export(
+                tmp_path,
+                archive_root=settings.export_archive_root,
+                kind="dutypay",
+                period=month_str,  # type: ignore[arg-type]
+            )
+            click.echo(f"DutyPay-Export archiviert: {archived}")
 
         if out_path is not None:
             resolved = Path(out_path)
             if resolved.is_dir():
+                year, month = date_from_d.year, date_from_d.month
                 resolved = resolved / dutypay_filename(year, month)
-            import shutil
             shutil.copy2(tmp_path, resolved)
             click.echo(f"DutyPay-Export geschrieben: {resolved}")
 
@@ -207,9 +281,26 @@ def export_dutypay_cmd(month_str: str, out_path: Path | None) -> None:
 @click.option(
     "--month",
     "month_str",
-    required=True,
+    required=False,
+    default=None,
     metavar="YYYY-MM",
-    help="Monat, für den das Delta berechnet wird.",
+    help="Monat, für den das Delta berechnet wird. Aktiviert automatische Archivierung.",
+)
+@click.option(
+    "--from",
+    "date_from",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Startdatum (inkl.). Bei --from/--to: kein Archiv, --baseline und --out Pflicht.",
+)
+@click.option(
+    "--to",
+    "date_to",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Enddatum (inkl.). Bei --from/--to: kein Archiv, --baseline und --out Pflicht.",
 )
 @click.option(
     "--baseline",
@@ -217,7 +308,7 @@ def export_dutypay_cmd(month_str: str, out_path: Path | None) -> None:
     required=False,
     default=None,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Explizite Baseline-Datei (Standard: letzter archivierter Vollexport für den Monat).",
+    help="Explizite Baseline-Datei (Standard bei --month: letzter archivierter Vollexport).",
 )
 @click.option(
     "--shift-to-period",
@@ -233,19 +324,24 @@ def export_dutypay_cmd(month_str: str, out_path: Path | None) -> None:
     required=False,
     default=None,
     type=click.Path(path_type=Path),
-    help="Optionaler zusätzlicher Pfad für die Delta-CSV.",
+    help="Ausgabepfad für die Delta-CSV. Pflichtfeld bei --from/--to.",
 )
 def export_dutypay_delta_cmd(
-    month_str: str,
+    month_str: str | None,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
     baseline_path: Path | None,
     shift_to_period: str | None,
     out_path: Path | None,
 ) -> None:
-    """Berechnet Delta-Export zwischen aktuellem JTL-Stand und letztem Vollexport."""
+    """Berechnet Delta-Export zwischen aktuellem JTL-Stand und letztem Vollexport.
+
+    Mit --month: automatische Archivierung; Baseline wird automatisch ermittelt.
+    Mit --from/--to: kein Archiv; --baseline und --out sind Pflicht.
+    """
     import shutil
     import tempfile
 
-    from jtl2datev.core.archive import archive_delta, archive_export, latest_archive
     from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
     from jtl2datev.core.dutypay import DUTYPAY_COLUMNS, write_dutypay_csv
@@ -256,18 +352,26 @@ def export_dutypay_delta_cmd(
         write_delta_csv,
     )
 
-    year, month = _parse_month(month_str)
-    date_from, date_to_incl = _month_date_range(year, month)
+    date_from_d, date_to_d = _resolve_date_range(date_from, date_to, month_str)
+
+    use_archive = month_str is not None
+    if not use_archive and out_path is None:
+        raise click.UsageError("Bei --from/--to ist --out Pflicht (kein automatisches Archiv).")
+    if not use_archive and baseline_path is None:
+        raise click.UsageError("Bei --from/--to ist --baseline Pflicht (kein automatisches Archiv).")
+
     settings = Settings()
 
     # Resolve baseline
     if baseline_path is not None:
         effective_baseline = baseline_path
     else:
+        from jtl2datev.core.archive import latest_archive
+
         effective_baseline = latest_archive(
             settings.export_archive_root,
             kind="dutypay",
-            period=month_str,
+            period=month_str,  # type: ignore[arg-type]
         )
         if effective_baseline is None:
             click.echo(
@@ -279,30 +383,30 @@ def export_dutypay_delta_cmd(
     click.echo(f"Baseline: {effective_baseline}")
     baseline_rows = load_baseline(effective_baseline)
 
-    # Fresh full export into temp file
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
         current_tmp = Path(tmp.name)
 
     try:
         engine = make_engine(settings)
         repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=date_from, date_to=date_to_incl)
+        invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
         write_dutypay_csv(
             invoices_iter,
             out_path=current_tmp,
             own_vat_ids=settings.own_vat_ids,
         )
 
-        # Archive the fresh full export so next delta can use it as baseline
-        archived_full = archive_export(
-            current_tmp,
-            archive_root=settings.export_archive_root,
-            kind="dutypay",
-            period=month_str,
-        )
-        click.echo(f"Frischer Vollexport archiviert: {archived_full}")
+        if use_archive:
+            from jtl2datev.core.archive import archive_export
 
-        # Load current rows for diff
+            archived_full = archive_export(
+                current_tmp,
+                archive_root=settings.export_archive_root,
+                kind="dutypay",
+                period=month_str,  # type: ignore[arg-type]
+            )
+            click.echo(f"Frischer Vollexport archiviert: {archived_full}")
+
         import csv as csv_mod
 
         with current_tmp.open(encoding="utf-8", newline="") as fh:
@@ -320,13 +424,11 @@ def export_dutypay_delta_cmd(
             for doc_id in changed_ids:
                 click.echo(f"  Geändert: {doc_id}")
 
-        # Parse shift-to-period if given
         shift_tuple: tuple[int, int] | None = None
         if shift_to_period is not None:
             shift_year, shift_month = _parse_month(shift_to_period)
             shift_tuple = (shift_year, shift_month)
 
-        # Write delta to temp file, then archive + optional copy
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp2:
             delta_tmp = Path(tmp2.name)
 
@@ -338,13 +440,16 @@ def export_dutypay_delta_cmd(
                 shift_to_period=shift_tuple,
             )
 
-            archived_delta = archive_delta(
-                delta_tmp,
-                archive_root=settings.export_archive_root,
-                kind="dutypay",
-                period=month_str,
-            )
-            click.echo(f"Delta archiviert: {archived_delta}")
+            if use_archive:
+                from jtl2datev.core.archive import archive_delta
+
+                archived_delta = archive_delta(
+                    delta_tmp,
+                    archive_root=settings.export_archive_root,
+                    kind="dutypay",
+                    period=month_str,  # type: ignore[arg-type]
+                )
+                click.echo(f"Delta archiviert: {archived_delta}")
 
             if out_path is not None:
                 shutil.copy2(delta_tmp, out_path)
@@ -364,8 +469,30 @@ def export_dutypay_delta_cmd(
 
 
 @main.command("reconcile")
-@click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option("--to", "date_to", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option(
+    "--month",
+    "month_str",
+    required=False,
+    default=None,
+    metavar="YYYY-MM",
+    help="Monat des Reconcile, z.B. 2026-01.",
+)
+@click.option(
+    "--from",
+    "date_from",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Startdatum (inkl.), z.B. 2026-01-01.",
+)
+@click.option(
+    "--to",
+    "date_to",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Enddatum (inkl.), z.B. 2026-01-31.",
+)
 @click.option(
     "--out-mismatches",
     "out_mismatches",
@@ -373,16 +500,18 @@ def export_dutypay_delta_cmd(
     type=click.Path(path_type=Path),
     help="Optional: alle Mismatches als CSV schreiben.",
 )
-def reconcile_cmd(date_from: date, date_to: date, out_mismatches: Path | None) -> None:
+def reconcile_cmd(
+    month_str: str | None,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
+    out_mismatches: Path | None,
+) -> None:
     """Vergleicht JTL-Steuerdaten mit eigener Engine und gibt Mismatch-Report aus."""
-    import datetime as dt
-
     from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
     from jtl2datev.core.pipeline import run_reconcile
 
-    df = date_from.date() if isinstance(date_from, dt.datetime) else date_from  # type: ignore[union-attr]
-    dt_ = date_to.date() if isinstance(date_to, dt.datetime) else date_to  # type: ignore[union-attr]
+    df, dt_ = _resolve_date_range(date_from, date_to, month_str)
 
     settings = Settings()
 
@@ -467,8 +596,6 @@ def _write_mismatches_csv(
 
     assert isinstance(report, ReconcileReport)
 
-    # We need all mismatches, not just samples — re-collect from report
-    # The report only stores up to sample_limit; write what we have.
     fieldnames = [
         "invoice_no",
         "line_no",
@@ -494,8 +621,30 @@ def _write_mismatches_csv(
 
 
 @main.command("mixed-vat-check")
-@click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
-@click.option("--to", "date_to", required=True, type=click.DateTime(formats=["%Y-%m-%d"]))
+@click.option(
+    "--month",
+    "month_str",
+    required=False,
+    default=None,
+    metavar="YYYY-MM",
+    help="Monat des Checks, z.B. 2026-01.",
+)
+@click.option(
+    "--from",
+    "date_from",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Startdatum (inkl.), z.B. 2026-01-01.",
+)
+@click.option(
+    "--to",
+    "date_to",
+    required=False,
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Enddatum (inkl.), z.B. 2026-01-31.",
+)
 @click.option(
     "--out",
     "out_path",
@@ -503,21 +652,23 @@ def _write_mismatches_csv(
     default=None,
     help="Optionaler Pfad für CSV-Output. Ohne --out: nur Konsolen-Bericht.",
 )
-def mixed_vat_check_cmd(date_from: date, date_to: date, out_path: Path | None) -> None:
+def mixed_vat_check_cmd(
+    month_str: str | None,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
+    out_path: Path | None,
+) -> None:
     """Pre-Flight: Belege mit gemischten Steuersätzen auf Artikel-Positionen.
 
     Listet Belege, die auf ihren Hauptpositionen (ohne Versand/Sub-Positionen)
     mehr als einen MwStSatz tragen. Vor DATEV-/DutyPay-Export laufen lassen
     und betroffene Belege in JTL prüfen/korrigieren.
     """
-    import datetime as dt
-
     from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import make_engine
     from jtl2datev.core.preflight import find_mixed_vat_belege
 
-    df = date_from.date() if isinstance(date_from, dt.datetime) else date_from  # type: ignore[union-attr]
-    dt_ = date_to.date() if isinstance(date_to, dt.datetime) else date_to  # type: ignore[union-attr]
+    df, dt_ = _resolve_date_range(date_from, date_to, month_str)
 
     settings = Settings()
 
