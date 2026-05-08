@@ -31,7 +31,7 @@ STANDARD_VAT_RATE: dict[str, Decimal] = {
     "CZ": Decimal("21"),
     "DE": Decimal("19"),
     "DK": Decimal("25"),
-    "EE": Decimal("22"),
+    "EE": Decimal("24"),  # ab 01.07.2025 (vorher 22 %)
     "ES": Decimal("21"),
     "FI": Decimal("25.5"),
     "FR": Decimal("20"),

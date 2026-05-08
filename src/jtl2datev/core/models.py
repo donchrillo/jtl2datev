@@ -115,6 +115,7 @@ class ReconcileMismatch(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     invoice_no: str
+    external_order_no: str | None = None
     line_no: int
     field: str
     jtl_value: str

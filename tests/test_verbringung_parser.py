@@ -10,6 +10,11 @@ _JAN = _SAMPLES / "3871700020495.txt"
 _FEB = _SAMPLES / "3919876020521.txt"
 _MAR = _SAMPLES / "3968288020550.txt"
 
+pytestmark = pytest.mark.skipif(
+    not _JAN.exists(),
+    reason="Q1-Sample-Reports nicht im Repo (wurden entfernt nach Q1-Verifikation).",
+)
+
 
 @pytest.fixture(scope="module")
 def jan_rows() -> list[MovementRow]:

@@ -45,6 +45,7 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
             mismatches.append(
                 ReconcileMismatch(
                     invoice_no=invoice.invoice_no,
+                    external_order_no=invoice.jtl_external_order_no,
                     line_no=line.line_no,
                     field="vat_rate",
                     jtl_value=str(line.vat_rate),
@@ -57,6 +58,7 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
             mismatches.append(
                 ReconcileMismatch(
                     invoice_no=invoice.invoice_no,
+                    external_order_no=invoice.jtl_external_order_no,
                     line_no=line.line_no,
                     field="vat_amount",
                     jtl_value=str(line.vat_amount),

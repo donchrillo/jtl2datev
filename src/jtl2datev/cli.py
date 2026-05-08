@@ -9,9 +9,24 @@ from jtl2datev.core.exchange_rates import DEFAULT_RATES_PATH, get_rates_for_peri
 
 
 @click.group()
-def main() -> None:
+@click.option(
+    "-v", "--verbose",
+    is_flag=True,
+    default=False,
+    help="Detailliertes Logging (INFO-Level). Default: nur ERROR + Warnungen.",
+)
+@click.pass_context
+def main(ctx: click.Context, verbose: bool) -> None:
     """jtl2datev — JTL-Rechnungen ins DATEV-Format exportieren."""
-    logging.basicConfig(level=logging.INFO)
+    if verbose:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+    else:
+        # Standard: nur ERROR ins Terminal. Bibliotheks-WARNINGs (z.B. "Unknown
+        # platform 'Weitere Verkaufskanäle'") werden unterdrückt — Fallback auf
+        # DE-Marketplace ist im Code dokumentiert und im Routinebetrieb nicht
+        # handlungsrelevant.
+        logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
+    ctx.obj = {"verbose": verbose}
 
 
 @main.command()
@@ -1049,8 +1064,9 @@ def reconcile_cmd(
     if sample:
         click.echo("--- Sample-Mismatches (erste 10) ---")
         for mm in sample:
+            ext = f" [Ext: {mm.external_order_no}]" if mm.external_order_no else ""
             click.echo(
-                f"  [{mm.severity.upper():5}] {mm.invoice_no} / Pos {mm.line_no}"
+                f"  [{mm.severity.upper():5}] {mm.invoice_no}{ext} / Pos {mm.line_no}"
                 f" | {mm.field}: JTL={mm.jtl_value!r} Engine={mm.engine_value!r}"
             )
         click.echo("")
@@ -1071,6 +1087,7 @@ def _write_mismatches_csv(
 
     fieldnames = [
         "invoice_no",
+        "external_order_no",
         "line_no",
         "severity",
         "field",
@@ -1084,6 +1101,7 @@ def _write_mismatches_csv(
             writer.writerow(
                 {
                     "invoice_no": mm.invoice_no,
+                    "external_order_no": mm.external_order_no or "",
                     "line_no": mm.line_no,
                     "severity": mm.severity,
                     "field": mm.field,
