@@ -631,6 +631,185 @@ ausgewertetes `nReverseCharge`-Flag.
 Alles IDs — **die echten DATEV-Codes** stehen in
 `Steuern.vSteuerschluesselDaten` (TODO: Struktur einlesen).
 
+## EK-Preis-Lookup für Amazon-Verbringungs-SKUs (`verbringung_pricing.py`)
+
+### Tabelle `dbo.pf_amazon_angebot_mapping`
+
+Verknüpft Amazon-`cSellerSKU` mit dem JTL-internen `kArtikel`.
+
+| Spalte       | Typ       | Bedeutung                          |
+|--------------|-----------|------------------------------------|
+| `cSellerSKU` | nvarchar  | Amazon-Seller-SKU (case-sensitiv)  |
+| `kArtikel`   | int       | FK → `dbo.tArtikel.kArtikel`       |
+| `kUser`      | int       | Pflege-Benutzer                    |
+
+Viele Artikel-Varianten sind hier direkt als `cSellerSKU` eingetragen
+(z.B. `B07200200-AP1`, `384000010-AP12`). Bundle-Größen und AP-Varianten
+haben eigene Einträge.
+
+### Tabelle `dbo.tArtikel` (EK-Preise)
+
+| Spalte        | Typ       | Bedeutung                                         |
+|---------------|-----------|---------------------------------------------------|
+| `kArtikel`    | int       | PK                                                |
+| `cArtNr`      | nvarchar  | Artikelnummer (= JTL-interner SKU-Schlüssel)      |
+| `fEKNetto`    | decimal   | Aktueller Netto-EK; 0 wenn nicht gepflegt         |
+| `fLetzterEK`  | decimal   | Letzter Netto-EK; Fallback wenn `fEKNetto == 0`   |
+
+### Lookup-Tier-Strategie (Stand 2026-05-08)
+
+SKUs aus Amazon-Verbringungs-Reports (`SELLER_SKU`-Spalte) werden in sechs
+Stufen aufgelöst. Höhere Stufe gewinnt nur wenn niedrigere keinen Treffer
+liefert. Q1-2026 alle 523 einzigartigen SKUs 100 % aufgelöst (vorher 148 unresolved).
+
+| Tier | Strategie              | matched_via        | Q1-Treffer |
+|------|------------------------|--------------------|------------|
+| 1    | Direct: `cSellerSKU == SKU` | `"direct"`    | 235        |
+| 2    | FBA/MFN-Suffix strippen, dann Mapping | `"fba"` | 0    |
+| 3    | Direct auf `tArtikel.cArtNr` (case-insensitive) | `"tArtikel-direct"` | 1 |
+| 4    | amzn.gr.-Stem: sukzessiv 1-3 Dash-Segmente vom Ende entfernen, dann Mapping | `"amzn"` | 61 |
+| 5a   | B-Ware-Stem (Regex): Stem in Mapping | `"bware-stem"` | 129 |
+| 5b   | B-Ware-Stem: Stem direkt in tArtikel.cArtNr | `"bware-stem"` | (in 129) |
+| 5-fb | B-Ware ohne Match: pauschal 0,10 € | `"bware-fallback"` | 27 |
+| 6a   | ASIN → `tArtikel.cASIN` direkt (altes Listing) | `"asin-tartikel"` | 16 |
+| 6b   | ASIN → `pf_amazon_angebot.cASIN1` → aktuelle SKU → Mapping/tArtikel | `"asin-angebot"` | 54 |
+| —    | Unresolvable           | `None`             | 0          |
+
+**Q1-2026-Gesamt (523 einzigartige SKUs):**
+- Gemappt: 523 (100%)
+- Nicht gemappt: 0
+
+### amzn.gr.-SKU-Format
+
+Amazon generiert Verbringungs-SKUs im Format:
+
+```
+amzn.gr.<OriginalSKU>-<HASH>-<2-CHAR-MARKETPLACE>
+```
+
+Beobachtete Marketplace-Suffixe: `VG` (DE), `LN` (FR/IT), `PO` (PL/ES), `GD`, `AC`.
+
+Hash-Länge ist variabel (1–19 Zeichen inkl. `_`, `-`, `+`). Die ursprüngliche
+SKU kann selbst Bindestriche enthalten, weshalb direkte Regex-Extraktion
+des Stems ambig ist. Lösung: iterative Kandidaten durch sukzessives Entfernen
+von 1, 2 oder 3 abschließenden Dash-Segmenten.
+
+Beispiel: `amzn.gr.336000080-AP3-VhWvvQDNpi75ttI-VG`
+→ Kandidaten: `336000080-AP3-VhWvvQDNpi75ttI`, `336000080-AP3`, `336000080`
+→ `336000080-AP3` ist in `pf_amazon_angebot_mapping` → Treffer
+
+## Verbringungen-Tool: Amazon-FBA-Mapping
+
+Amazon-Lagerbewegungen (Transactional Report TXT) werden gegen die JTL-Artikel-Datenbank gemappt zur Bestimmung der EK-Preise.
+
+### Tabelle `dbo.pf_amazon_angebot_mapping` (SKU-Mapping)
+
+Verknüpft Amazon-`SELLER_SKU` mit dem JTL-Artikel.
+
+| Spalte       | Typ       | Bedeutung                          |
+|--------------|-----------|------------------------------------|
+| `cSellerSKU` | nvarchar  | Amazon-Seller-SKU (case-sensitiv)  |
+| `kArtikel`   | int       | FK → `dbo.tArtikel.kArtikel`       |
+| `kUser`      | int       | Pflege-Benutzer                    |
+
+**Coverage Q1-2026:** 525/673 Unique SKUs gemappt (78%), siehe Tier-Strategie unten.
+
+### Tabelle `dbo.tArtikel` (Artikel + EK-Preise)
+
+Relevante Spalten für Verbringungen:
+
+| Spalte        | Typ       | Bedeutung                                         |
+|---------------|-----------|---------------------------------------------------|
+| `kArtikel`    | int       | PK                                                |
+| `cArtNr`      | nvarchar  | Artikelnummer (= JTL-interner SKU-Schlüssel)      |
+| `fEKNetto`    | decimal   | Aktueller Netto-EK; 0 wenn nicht gepflegt         |
+| `fLetzterEK`  | decimal   | Letzter Netto-EK; Fallback wenn `fEKNetto == 0`   |
+
+**Lookup:** Zuerst `fEKNetto`, danach `fLetzterEK` als Fallback. Wenn beide 0: SKU in `missing_ek_*.csv`.
+
+### Tabelle `dbo.tArtikelBeschreibung` (Artikel-Stammdaten)
+
+Liefert die Warenbezeichnung für Pro-Forma-PDFs.
+
+| Spalte        | Typ       | Bedeutung                        |
+|---------------|-----------|----------------------------------|
+| `kArtikel`    | int       | FK                               |
+| `kSprache`    | int       | Sprachen-ID (1 = Deutsch)        |
+| `kPlattform`  | int       | Plattform-ID (1 = Amazon)        |
+| `cName`       | nvarchar  | Artikel-Beschreibung             |
+
+**Filter für Verbringungen:** `kSprache=1 AND kPlattform=1` (deutsch, Amazon-Plattform).
+
+### SKU-Mapping: 6-Tier-Lookup-Strategie (Stand 2026-05-08, vollständig aufgelöst)
+
+Aus dem Amazon-Transactional-Report (`SELLER_SKU`-Spalte). Q1-2026 alle 523 Unique SKUs gemappt (100 % Coverage, 0 unresolved).
+
+| Tier | Strategie | Quelle | matched_via | Q1-Treffer |
+|------|-----------|--------|-------------|------------|
+| 1    | Direct: `cSellerSKU == SKU` | `pf_amazon_angebot_mapping` → `tArtikel.kArtikel` | `"direct"` | 235 |
+| 2    | FBA/MFN-Suffix strippen (z.B. `-FBA`, `-MFN`), dann Tier-1 | `pf_amazon_angebot_mapping` | `"fba"` | 0 |
+| 3    | Direct: SKU als `tArtikel.cArtNr` (case-insensitive) | `tArtikel` | `"tArtikel-direct"` | 1 |
+| 4    | amzn.gr.-Stem: sukzessiv 1–3 Dash-Segmente vom Ende entfernen, dann Tier-1 | `pf_amazon_angebot_mapping` | `"amzn"` | 61 |
+| 5a   | B-Ware-Stem (Regex) → Mapping | `pf_amazon_angebot_mapping` | `"bware-stem"` | 129 |
+| 5b   | B-Ware-Stem → tArtikel direkt (Fallback für 5a) | `tArtikel` | `"bware-stem"` | (in 129) |
+| 5-fb | B-Ware ohne Match → pauschal 0,10 € | — | `"bware-fallback"` | 27 |
+| 6a   | ASIN → `tArtikel.cASIN` direkt (altes Amazon-Listing) | `tArtikel` | `"asin-tartikel"` | 16 |
+| 6b   | ASIN → `pf_amazon_angebot.cASIN1` → aktuelle SKU → Mapping/tArtikel | `pf_amazon_angebot` | `"asin-angebot"` | 54 |
+| —    | Unresolvable | — | `None` | 0 |
+
+**Schema-Findings zu ASIN-Lookup-Quellen (verifiziert 2026-05-08):**
+
+- **`pf_amazon_angebot_fba`:** Tabelle hat **KEINE** `cASIN`-Spalte → nicht für ASIN-Lookup verwendbar. Spalten: `cSellerSKU`, `kUser`, `nQuantity`, `cConditionType`, `cFNSKU`, `cMarketplaceID` etc.
+
+- **`pf_amazon_angebot`:** Spalten `cASIN1`, `cASIN2`, `cASIN3` vorhanden (üblicherweise nur `cASIN1` befüllt). `cSellerSKU` = aktuelle Seller-SKU dieses Listings.
+
+- **`tArtikel.cASIN`:** Spalte `cASIN` (nvarchar) existiert direkt. Bevorzugte Quelle (ohne zusätzliche Joins zu `pf_amazon_angebot`). Nicht alle Artikel befüllt (Legacy-Artikel fehlen häufig).
+
+**B-Ware-Bewertung (User-bestätigt 2026-05-08):**
+
+| Scenario | EK-Betrag | Audit-Flag |
+|---|---|---|
+| Tier 5a/5b Match (Stem in Mapping/tArtikel) | 10 % von `fEKNetto` (Floor 0,01 €) | `is_bware=True` |
+| Tier 6 Match (ASIN-Lookup erfolgreich) | voller `fEKNetto` aktuelles Listing | `is_bware=True`, `bware_pricing_basis=Stem-EK` |
+| Kein Match (Fallback) | pauschal 0,10 € | `is_bware=True` |
+
+**Q1-2026-Statistik nach Tier-6-Erweiterung (523 Unique SKUs):**
+
+| Tier | Treffer | Anteil |
+|------|---------|--------|
+| 1 (direct) | 235 | 44,9% |
+| 2 (fba) | 0 | 0% |
+| 3 (art) | 1 | 0,2% |
+| 4 (amzn) | 61 | 11,7% |
+| 5 (bware-stem + fallback) | 156 | 29,8% |
+| 6a (asin-tartikel) | 16 | 3,1% |
+| 6b (asin-angebot) | 54 | 10,3% |
+| **Gesamt gemappt** | **523** | **100%** |
+| Nicht gemappt | **0** | **0%** |
+
+**Verbesserung gegenüber Tier 1–4 (Juli 2026):** Vorher 148 unresolved (22 %). Tier 5+6 schlug alle auf.
+
+---
+
+## Future Outlook: Migration zu SQL-Tabellen (TOCI-ERP)
+
+**Wechselkurse:** `data/exchange_rates.json` wird heute als Flat-File gepflegt, kann später in eine SQL-Tabelle migriert werden. Vorgesehenes Schema:
+
+```
+tWechselkurse (
+  ID INT PRIMARY KEY,
+  periode NVARCHAR(7),          -- "YYYY-MM"
+  waehrung NCHAR(3),            -- "CZK", "PLN", "GBP", …
+  kurs DECIMAL(10,6),           -- "24,2780"
+  quelle NVARCHAR(20),          -- "BMF" oder "manual"
+  importiert_am DATETIME        -- Zeitstempel
+)
+```
+
+**Lookup:** `SELECT kurs FROM tWechselkurse WHERE periode=@periode AND waehrung=@ccy AND quelle<>'manual' ORDER BY quelle DESC LIMIT 1` — Manual-Einträge haben Vorrang (über VIEW-Sortierung oder Logik-Schicht).
+
+---
+
 ## Offene Punkte (nach Erkundung Teil 2)
 
 1. **`nTyp` in `Rechnung.tRechnungAdresse`** — welcher Wert ist Liefer-, welcher

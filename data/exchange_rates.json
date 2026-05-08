@@ -1,0 +1,474 @@
+{
+  "2026-01": {
+    "AUD": {
+      "source": "BMF",
+      "value": "1.7304"
+    },
+    "BRL": {
+      "source": "BMF",
+      "value": "6.2674"
+    },
+    "CAD": {
+      "source": "BMF",
+      "value": "1.6173"
+    },
+    "CHF": {
+      "source": "BMF",
+      "value": "0.9272"
+    },
+    "CNY": {
+      "source": "BMF",
+      "value": "8.1806"
+    },
+    "CZK": {
+      "source": "BMF",
+      "value": "24.278"
+    },
+    "DKK": {
+      "source": "BMF",
+      "value": "7.4703"
+    },
+    "GBP": {
+      "source": "BMF",
+      "value": "0.86828"
+    },
+    "HKD": {
+      "source": "BMF",
+      "value": "9.1523"
+    },
+    "HUF": {
+      "source": "BMF",
+      "value": "384.18"
+    },
+    "IDR": {
+      "source": "BMF",
+      "value": "19757.02"
+    },
+    "ILS": {
+      "source": "BMF",
+      "value": "3.6916"
+    },
+    "INR": {
+      "source": "BMF",
+      "value": "106.6826"
+    },
+    "ISK": {
+      "source": "BMF",
+      "value": "146.32"
+    },
+    "JPY": {
+      "source": "BMF",
+      "value": "183.94"
+    },
+    "KRW": {
+      "source": "BMF",
+      "value": "1710.38"
+    },
+    "MXN": {
+      "source": "BMF",
+      "value": "20.7288"
+    },
+    "MYR": {
+      "source": "BMF",
+      "value": "4.7262"
+    },
+    "NOK": {
+      "source": "BMF",
+      "value": "11.6670"
+    },
+    "NZD": {
+      "source": "BMF",
+      "value": "2.0090"
+    },
+    "PHP": {
+      "source": "BMF",
+      "value": "69.479"
+    },
+    "PLN": {
+      "source": "BMF",
+      "value": "4.2127"
+    },
+    "RON": {
+      "source": "BMF",
+      "value": "5.0919"
+    },
+    "SEK": {
+      "source": "BMF",
+      "value": "10.6815"
+    },
+    "SGD": {
+      "source": "BMF",
+      "value": "1.5027"
+    },
+    "THB": {
+      "source": "BMF",
+      "value": "36.735"
+    },
+    "TRY": {
+      "source": "BMF",
+      "value": "50.7458"
+    },
+    "USD": {
+      "source": "BMF",
+      "value": "1.1738"
+    },
+    "ZAR": {
+      "source": "BMF",
+      "value": "19.1152"
+    }
+  },
+  "2026-02": {
+    "AUD": {
+      "source": "BMF",
+      "value": "1.6763"
+    },
+    "BRL": {
+      "source": "BMF",
+      "value": "6.1529"
+    },
+    "CAD": {
+      "source": "BMF",
+      "value": "1.6140"
+    },
+    "CHF": {
+      "source": "BMF",
+      "value": "0.9140"
+    },
+    "CNY": {
+      "source": "BMF",
+      "value": "8.1682"
+    },
+    "CZK": {
+      "source": "BMF",
+      "value": "24.260"
+    },
+    "DKK": {
+      "source": "BMF",
+      "value": "7.4702"
+    },
+    "GBP": {
+      "source": "BMF",
+      "value": "0.87032"
+    },
+    "HKD": {
+      "source": "BMF",
+      "value": "9.2421"
+    },
+    "HUF": {
+      "source": "BMF",
+      "value": "378.61"
+    },
+    "IDR": {
+      "source": "BMF",
+      "value": "19896.39"
+    },
+    "ILS": {
+      "source": "BMF",
+      "value": "3.6699"
+    },
+    "INR": {
+      "source": "BMF",
+      "value": "107.3203"
+    },
+    "ISK": {
+      "source": "BMF",
+      "value": "144.75"
+    },
+    "JPY": {
+      "source": "BMF",
+      "value": "183.45"
+    },
+    "KRW": {
+      "source": "BMF",
+      "value": "1712.39"
+    },
+    "MXN": {
+      "source": "BMF",
+      "value": "20.3806"
+    },
+    "MYR": {
+      "source": "BMF",
+      "value": "4.6261"
+    },
+    "NOK": {
+      "source": "BMF",
+      "value": "11.3206"
+    },
+    "NZD": {
+      "source": "BMF",
+      "value": "1.9683"
+    },
+    "PHP": {
+      "source": "BMF",
+      "value": "68.790"
+    },
+    "PLN": {
+      "source": "BMF",
+      "value": "4.2184"
+    },
+    "RON": {
+      "source": "BMF",
+      "value": "5.0945"
+    },
+    "SEK": {
+      "source": "BMF",
+      "value": "10.6351"
+    },
+    "SGD": {
+      "source": "BMF",
+      "value": "1.4979"
+    },
+    "THB": {
+      "source": "BMF",
+      "value": "36.960"
+    },
+    "TRY": {
+      "source": "BMF",
+      "value": "51.6771"
+    },
+    "USD": {
+      "source": "BMF",
+      "value": "1.1824"
+    },
+    "ZAR": {
+      "source": "BMF",
+      "value": "18.9206"
+    }
+  },
+  "2026-03": {
+    "AUD": {
+      "source": "BMF",
+      "value": "1.6470"
+    },
+    "BRL": {
+      "source": "BMF",
+      "value": "6.0498"
+    },
+    "CAD": {
+      "source": "BMF",
+      "value": "1.5848"
+    },
+    "CHF": {
+      "source": "BMF",
+      "value": "0.9094"
+    },
+    "CNY": {
+      "source": "BMF",
+      "value": "7.9703"
+    },
+    "CZK": {
+      "source": "BMF",
+      "value": "24.438"
+    },
+    "DKK": {
+      "source": "BMF",
+      "value": "7.4717"
+    },
+    "GBP": {
+      "source": "BMF",
+      "value": "0.86631"
+    },
+    "HKD": {
+      "source": "BMF",
+      "value": "9.0461"
+    },
+    "HUF": {
+      "source": "BMF",
+      "value": "389.19"
+    },
+    "IDR": {
+      "source": "BMF",
+      "value": "19561.24"
+    },
+    "ILS": {
+      "source": "BMF",
+      "value": "3.5988"
+    },
+    "INR": {
+      "source": "BMF",
+      "value": "107.3446"
+    },
+    "ISK": {
+      "source": "BMF",
+      "value": "144.04"
+    },
+    "JPY": {
+      "source": "BMF",
+      "value": "183.40"
+    },
+    "KRW": {
+      "source": "BMF",
+      "value": "1723.13"
+    },
+    "MXN": {
+      "source": "BMF",
+      "value": "20.5284"
+    },
+    "MYR": {
+      "source": "BMF",
+      "value": "4.5687"
+    },
+    "NOK": {
+      "source": "BMF",
+      "value": "11.1657"
+    },
+    "NZD": {
+      "source": "BMF",
+      "value": "1.9762"
+    },
+    "PHP": {
+      "source": "BMF",
+      "value": "68.874"
+    },
+    "PLN": {
+      "source": "BMF",
+      "value": "4.2715"
+    },
+    "RON": {
+      "source": "BMF",
+      "value": "5.0954"
+    },
+    "SEK": {
+      "source": "BMF",
+      "value": "10.7614"
+    },
+    "SGD": {
+      "source": "BMF",
+      "value": "1.4790"
+    },
+    "THB": {
+      "source": "BMF",
+      "value": "37.298"
+    },
+    "TRY": {
+      "source": "BMF",
+      "value": "51.0938"
+    },
+    "USD": {
+      "source": "BMF",
+      "value": "1.1558"
+    },
+    "ZAR": {
+      "source": "BMF",
+      "value": "19.3533"
+    }
+  },
+  "2026-04": {
+    "AUD": {
+      "source": "BMF",
+      "value": "1.6489"
+    },
+    "BRL": {
+      "source": "BMF",
+      "value": "5.8830"
+    },
+    "CAD": {
+      "source": "BMF",
+      "value": "1.6097"
+    },
+    "CHF": {
+      "source": "BMF",
+      "value": "0.9213"
+    },
+    "CNY": {
+      "source": "BMF",
+      "value": "8.0005"
+    },
+    "CZK": {
+      "source": "BMF",
+      "value": "24.381"
+    },
+    "DKK": {
+      "source": "BMF",
+      "value": "7.4728"
+    },
+    "GBP": {
+      "source": "BMF",
+      "value": "0.86933"
+    },
+    "HKD": {
+      "source": "BMF",
+      "value": "9.1703"
+    },
+    "HUF": {
+      "source": "BMF",
+      "value": "368.96"
+    },
+    "IDR": {
+      "source": "BMF",
+      "value": "20083.87"
+    },
+    "ILS": {
+      "source": "BMF",
+      "value": "3.5438"
+    },
+    "INR": {
+      "source": "BMF",
+      "value": "109.4829"
+    },
+    "ISK": {
+      "source": "BMF",
+      "value": "143.73"
+    },
+    "JPY": {
+      "source": "BMF",
+      "value": "186.21"
+    },
+    "KRW": {
+      "source": "BMF",
+      "value": "1734.05"
+    },
+    "MXN": {
+      "source": "BMF",
+      "value": "20.4023"
+    },
+    "MYR": {
+      "source": "BMF",
+      "value": "4.6484"
+    },
+    "NOK": {
+      "source": "BMF",
+      "value": "11.0332"
+    },
+    "NZD": {
+      "source": "BMF",
+      "value": "2.0000"
+    },
+    "PHP": {
+      "source": "BMF",
+      "value": "70.609"
+    },
+    "PLN": {
+      "source": "BMF",
+      "value": "4.2502"
+    },
+    "RON": {
+      "source": "BMF",
+      "value": "5.0991"
+    },
+    "SEK": {
+      "source": "BMF",
+      "value": "10.8348"
+    },
+    "SGD": {
+      "source": "BMF",
+      "value": "1.4933"
+    },
+    "THB": {
+      "source": "BMF",
+      "value": "37.784"
+    },
+    "TRY": {
+      "source": "BMF",
+      "value": "52.4489"
+    },
+    "USD": {
+      "source": "BMF",
+      "value": "1.1706"
+    },
+    "ZAR": {
+      "source": "BMF",
+      "value": "19.3554"
+    }
+  }
+}

@@ -1,11 +1,27 @@
 import json
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_OWN_VAT_COUNTRIES: frozenset[str] = frozenset({"DE", "FR", "IT", "ES", "PL", "CZ", "GB"})
+
+OWN_VAT_IDS_VERBRINGUNG: dict[str, str] = {
+    "DE": "DE249030238",
+    "GB": "GB242492315",
+    "FR": "FR54820509628",
+    "IT": "IT00185379997",
+    "PL": "PL5263144779",
+    "CZ": "CZ683736606",
+    "ES": "ESN2765131D",
+    # SK: keine VAT-Registrierung notwendig. Slowakei-Lager ist reines Retourenlager
+    # (Kunden-Retouren gehen ein, werden auf andere FBA-Lager verteilt). Keine Verkäufe
+    # oder Versendungen an Endkunden ab SK → keine Steuerpflicht.
+    # Hinweis: Im Amazon-Transactional-Report sind Rücksendungen Amazon→Hünxe ohnehin
+    # nicht enthalten (weder Auto-Removals alle 14 Tage noch manuelle Rückforderungen).
+}
 
 _DEFAULT_OWN_VAT_IDS: dict[str, str] = {
     "DE": "DE249030238",
@@ -34,6 +50,10 @@ class Settings(BaseSettings):
     datev_default_debitor: int = 10000000
 
     export_archive_root: Path = Path("exports")
+
+    bware_pricing_strategy: str = "ten_percent"  # "ten_percent" | "flat_10ct"
+    bware_flat_price: Decimal = Decimal("0.10")
+    bware_percentage: Decimal = Decimal("0.10")
 
     own_vat_countries: frozenset[str] = _DEFAULT_OWN_VAT_COUNTRIES
     own_vat_ids: dict[str, str] = _DEFAULT_OWN_VAT_IDS

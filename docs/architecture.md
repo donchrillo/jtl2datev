@@ -28,7 +28,17 @@
 | `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
 | `core/reconcile.py` | ✓ | Plausi-Check: JTL-gespeichert vs. Engine. ReconcileMismatch-Report mit Severity (error/warning/info). Mismatch-CSV-Export. |
 | `core/datev.py` | ✓ | DATEV-EXTF-CSV-Erzeugung (v7.0, Format 12). Windows-1252, CRLF. Beide Flags `--compare-to` und `--audit` implementiert. |
-| `cli.py` | ✓ | Click-Wrapper, `export --from --to --out [--compare-to] [--audit]`. Error-Handling für DB/Validation. |
+| `core/dutypay.py` | ✓ | DutyPay-CSV-Export (98 Spalten OSS-Meldungsformat, openpyxl, UTF-8, Semikolon-Trennzeichen, Dezimalkomma). |
+| `core/dutypay_delta.py` | ✓ | Delta-Diff für DutyPay (Match nach DocumentID, `--shift-to-period` für Folgemonats-Nachmeldungen). |
+| `core/taxually.py` | ✓ | Taxually-XLSX-Export (20 Spalten, Sheet `Your data`, Punkt-Dezimal, VAT-Reporting-Country-Entscheidungslogik). |
+| `core/taxually_delta.py` | ✓ | Delta-Diff für Taxually (Match nach DocumentID, `--shift-to-period` analog DutyPay). |
+| `core/verbringung_parser.py` | ✓ | Amazon-Transactional-Report TXT-Parser (tab-separated, ~95 Spalten). Filter FC_TRANSFER + INBOUND. |
+| `core/verbringung_pricing.py` | ✓ | SKU-Mapping (6-Tier-Lookup: Tier 1–4 Standard, Tier 5 B-Ware-Erkennung + 10%-Bewertung, Tier 6 ASIN-Lookup). EK-Netto-Lookup mit Fallback. `PricingResult` mit `is_bware`-Flag und `bware_pricing_basis`. Q1-2026 100% Coverage. |
+| `core/verbringung_taxually.py` | ✓ | XLSX-Generator (20 Spalten, openpyxl), identisch zu Taxually-Format. B-Ware-Marker `(B-Ware)` in Description. |
+| `core/verbringung_pdf.py` | ✓ | Pro-Forma-PDF (reportlab): Header, Fachtext, VAT-IDs, Tabelle, Währungs-Summen. B-Ware-Artikel-Beschreibung mit Suffix. |
+| `core/exchange_rates.py` | ✓ | JSON-Storage (`data/exchange_rates.json`) + BMF-CSV-Importer. API: `load_rates`, `get_rate`, `set_rate`, `get_rates_for_period`, `fetch_bmf_csv`, `parse_bmf_csv`, `import_bmf_rates`. |
+| `core/archive.py` | ✓ | Generischer Archiv-Helfer für DATEV/DutyPay/Taxually/Verbringungen (Auto-Verzeichniserstellung, Timestamp-Naming). |
+| `cli.py` | ✓ | Click-Wrapper: `export`, `export-delta`, `export-dutypay`, `export-dutypay-delta`, `export-taxually`, `export-taxually-delta`, `export-verbringung`, `import-rates`, `mixed-vat-check`, `reconcile`. Error-Handling für DB/Validation. |
 
 Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 
@@ -66,7 +76,11 @@ JTL-MSSQL
                                                 USt-Schlüssel-Mapping)
                                                │
                                                ▼
-                                core/datev.py + core/dutypay.py  (EXTF/DutyPay-CSV)
+                        core/datev.py + core/dutypay.py + core/taxually.py
+                           (EXTF-CSV / DutyPay-CSV / Taxually-XLSX)
+                                               │
+                                               ▼
+                   core/archive.py (Auto-Archivierung unter exports/)
 ```
 
 ### Steuer-Engine: Eingaben

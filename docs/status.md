@@ -2,6 +2,156 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-08 — Tier 5+6: B-Ware-Behandlung + ASIN-Lookup
+
+**Q1-2026 Verbringungs-SKU-Coverage komplett aufgelöst (148 → 0 unresolved):**
+
+**Tier 5 (B-Ware-Erkennung):**
+- Pattern `amzn.gr.<STEM>-<HASH>-<SUFFIX>` erkannt via Regex; Stem iterativ extrahiert
+- Bewertungsregel User-bestätigt 2026-05-08:
+  - Stem-Match in Mapping/tArtikel → 10 % vom Netto-EK (Floor 0,01 €)
+  - Kein Match → pauschal 0,10 €
+  - ASIN-Match (Tier 6) → voller aktueller EK
+- Config-Optionen: `bware_pricing_strategy: {ten_percent|flat_10ct}` (Default `ten_percent`), CLI-Flag `--bware-pricing-strategy`
+- PDF-Marker: Description bekommt `(B-Ware)` bei Match
+- Neuer Output `bware_summary_<ts>.csv`: seller_sku, stem, qty, movements, ek_basis, ek_used, source
+- `PricingResult` erweitert: `is_bware: bool`, `bware_pricing_basis: Decimal | None`
+- B-Ware-SKUs ausgeschlossen aus `missing_ek_*.csv`
+
+**Tier 6 (ASIN-Lookup):**
+- Schema-Findings (live-verifiziert):
+  - `pf_amazon_angebot_fba` → **keine** ASIN-Spalte, entfällt
+  - `tArtikel.cASIN` direkt vorhanden → Tier 6a (preferred)
+  - `pf_amazon_angebot.cASIN1/2/3` vorhanden → Tier 6b
+- Tier 6a: `tArtikel.cASIN = movement.asin` → voller EK
+- Tier 6b: `pf_amazon_angebot.cASIN1 = movement.asin` → aktuelle SKU → Mapping → voller EK
+- Position: bei B-Ware nach 5a/5b vor Fallback; sonst nach 1–4
+- API: `lookup_prices(…, asin_by_sku: dict[str, str] | None = None)` — backward-compat
+
+**Q1-Stats (523 einzigartige SKUs):**
+- Tier 1 (direct): 235 (44,9%)
+- Tier 4 (amzn-stem): 61 (11,7%)
+- Tier 5 (bware-stem/fallback): 156 (29,8%)
+- Tier 6 (asin-t/a): 70 (13,4%)
+- Unresolved: 0 (0%)
+
+**Tests:** 418 passed, 3 skipped (+28 Tests für B-Ware + ASIN).
+
+---
+
+## 2026-05-08 — BMF-Wechselkurs-Import + JSON-Storage
+
+**Wechselkurs-Verwaltung komplett überarbeitet:**
+
+- `core/exchange_rates.py` — JSON-Storage (`data/exchange_rates.json`) + BMF-CSV-Importer
+  - API: `load_rates`, `get_rate`, `set_rate`, `get_rates_for_period`, `fetch_bmf_csv`, `parse_bmf_csv`, `import_bmf_rates`
+  - Schema: `{"YYYY-MM": {"CCY": {"value": "...", "source": "BMF"|"manual"}}}`
+- Neuer CLI-Command `jtl2datev import-rates [--year YYYY] [--csv PATH]` — lädt offizielle BMF-Datensätze
+- BMF-CSV-URL stabil: `https://www.bundesfinanzministerium.de/Datenportal/Daten/offene-daten/steuern-zoelle/umsatzsteuer-umrechnungskurse/datensaetze/uu-kurse-{YEAR}-csv.csv?__blob=publicationFile` (ISO-8859-1, Semikolon, monatlich fortgeschrieben)
+- Verhalten: `source=BMF`-Werte werden überschrieben, `source=manual`-Werte bleiben (User-Input hat Vorrang)
+- `export-verbringung` erweitert: `--exchange-rates` TOML-Option entfernt, neuer Flag `--strict` für CI (bricht ab bei fehlendem Kurs). Default interaktiv: CLI fragt nach fehlenden Kursen, speichert als `source="manual"`.
+- Initial-Import: 116 Kurse für Q1+Apr 2026 aus BMF (PLN/CZK/GBP/SEK/DKK/RON/HUF/USD etc.)
+- `EXCHANGE_RATES`-Konstante aus `core/config.py` entfernt
+- BMF-PDF von Repo-Root nach `samples/wechselkurse/` verschoben
+
+**Tests:** 390 passed, 3 skipped (vorher 356 → +34: 28 für `test_exchange_rates.py`, 5 neue + Mock-Updates in `test_cli.py`).
+
+**Live-Verifikation:** `jtl2datev export-verbringung --report samples/verbringungen/3871700020495.txt --month 2026-01 --strict` generiert 30 PDFs + XLSX, alle Fremdwährungs-Spalten korrekt aus JSON.
+
+---
+
+## 2026-05-07 (Spätstunde) — Amazon-Verbringungs-Tool (Export)
+
+**Innergemeinschaftliche Lagerbewegungen aus Amazon-FBA-Reports exportiert:**
+
+- `core/verbringung_parser.py` — Tab-separated TXT-Parser (95 Spalten), Filter FC_TRANSFER + INBOUND. ~1.2–3k Zeilen/Monat.
+- `core/verbringung_pricing.py` — 4-Tier-SKU-Mapping: direct → fba-suffix-strip → tArtikel-direct → amzn.gr.-stem. EK-Netto-Lookup mit Fallback `fLetzterEK`.
+- `core/verbringung_taxually.py` — XLSX-Export (20 Spalten, Sheet „Your data"), identisch zu Taxually-Format.
+- `core/verbringung_pdf.py` — Pro-Forma-PDF (reportlab): Header (ToCi + Datum), Fachtext (§4 Nr.1b UStG), beide VAT-IDs, Tabelle (cArtNr, Name, Qty, EK, Summe), Summen pro Währung.
+- `cli.py` erweitert: `export-verbringung --report … --month YYYY-MM [--out-xlsx/pdf/ek]`. Auto-Archive unter `exports/verbringung/<YYYY-MM>/`.
+
+**Spezifikation:** `docs/verbringung.md` (CLI, XLSX-Mapping, PDF-Layout, SKU-Mapping-Tier, VAT-IDs, Wechselkurse, kein Delta-Command).
+
+**Q1-2026-Verifikation (Samples):**
+
+| Monat | FC_TRF | INBOUND | XLSX-Zeilen | PDFs | Unique SKUs |
+|-------|--------|---------|-------------|------|------------|
+| JAN | 1.231 | 10 | 1.241 | 30 | 347 |
+| FEB | 801 | 3 | 804 | 25 | 289 |
+| MAR | 972 | 2 | 974 | 27 | 302 |
+
+→ Zeilenzahlen + PDF-Counts matchen 1:1 mit Transactional Reports. EK-Preis Coverage 100% (gemappte SKUs), 148 ungemappte katalogisiert.
+
+**SKU-Mapping-Statistik (673 Unique):**
+- Tier 1 (direct): 348 (51,7%)
+- Tier 2 (fba-suffix): 1
+- Tier 3 (tArtikel-direct): 1
+- Tier 4 (amzn-stem): 175 (26,0%)
+- Ungemappt: 148 (22%, davon ~130 amzn.gr.* ohne Mapping-Eintrag)
+
+**Tests:** 356 passed, 3 skipped (inkl. +44 neue Verbringungen-Tests).
+
+**Nachgereicht 2026-05-08:**
+- VAT-IDs FR (FR54820509628) + GB (GB242492315) in `OWN_VAT_IDS_VERBRINGUNG` ergänzt.
+- SK: keine Registrierung notwendig — slowakisches Lager ist reines Retourenlager (Endkunden-Retouren gehen ein, werden auf andere FBA-Lager verteilt; keine Versendungen an Kunden ab SK). Im Code als Kommentar dokumentiert.
+- Klarstellung Rücksendungen Amazon → Hünxe: erscheinen grundsätzlich **nicht** im Amazon-Transactional-Report (weder Auto-Removals noch manuelle Rückforderungen). Der `is_return_to_user`-Marker bleibt als Vorsichtsmaßnahme.
+
+**Offene Punkte:**
+- 148 ungemappte SKUs in `pf_amazon_angebot_mapping` / `tArtikel.cArtNr` nachpflegen; SKU-Mapping-Strategie ggf. verfeinern.
+
+---
+
+## 2026-05-07 — Taxually-Export implementiert + Q1-Reconciliation
+
+**Neuer Exporter `core/taxually.py` + `core/taxually_delta.py`:**
+- XLSX-Format (openpyxl), Sheet `Your data`, 20 Spalten gemäß Taxually-Template
+- 1 Zeile pro Belegdokument (Brutto/Netto aggregiert), nicht per Position
+- Transaction type: `SALE` oder `REFUND` (uppercase); REFUND negativ
+- VAT Reporting Country — dreistufige Regel:
+  1. VAT > 0 → Customer's country (meldepflichtig in Kundenland, OSS-typisch)
+  2. VAT = 0 + Kunde = GB → `GB` (UK-Lokalregistrierung)
+  3. VAT = 0 sonst → Departure country (Verkäufer-Land, IC-Meldung/Export)
+- Spalten 13–20 leer (Taxually rechnet selbst)
+
+**CLI-Commands analog DutyPay:**
+- `jtl2datev export-taxually --month YYYY-MM` → Auto-Archiv unter `exports/taxually/<YYYY-MM>/<timestamp>.xlsx`
+- `jtl2datev export-taxually-delta --month YYYY-MM` → Delta gegen letzten Baseline
+- `--shift-to-period YYYY-MM` → Datums-Umschreibung für Nachzügler-Meldungen
+
+**Engine-Bug-Fix (Refund-Vorzeichen):**
+- SR-Belege (Storno-Rechnungskorrektionen, Prefix `SRK`) als **SALE mit positivem Vorzeichen** geschrieben (ökonomisch Rückgängigmachung der Gutschrift)
+- Alle anderen Gutschriften (normales Refund) als **REFUND mit negativem Vorzeichen**
+- Logik: JTL speichert SRK mit `nBelegtyp=0` (Rechnung) → `is_credit_note=False` → korrekt als SALE
+
+**Format-Spezifikation:** `docs/taxually-format.md` (20-Spalten-Mapping, VAT-Reporting-Land-Entscheidungsbaum, CLI-Workflow, Q1-Reconcile-Ergebnis)
+
+**Q1-2026 Reconciliation gegen Jera-PowerQuery:**
+
+| Monat | Engine Zeilen | Engine Distinct | Jera Zeilen | Jera Distinct | Δ Schnitt |
+|-------|---------------|-----------------|-------------|---------------|-----------|
+| JAN   | 5329          | 5329            | 5708        | 5329          | -0,13 €   |
+| FEB   | 3865          | 3865            | 4146        | 3594          | +0,04 €   |
+| MAR   | 4807          | 4807            | 5146        | 4490          | -0,03 €   |
+
+- **JAN**: Engine = Jera (Distinct 5329/5329 match). Jera-Zeilen-Diff durch Position-Breakdown (Jera schreibt je Position + Versand).
+- **FEB/MAR**: Engine Obermenge — zusätzliche 272 (FEB) / 318 (MAR) Belege `202630260xxx`/`202650012xxx` in Engine (nach User-Jera-Export eingespielt). Nur-Ref je 1 Beleg = Excel-Sci-Notation-Fehler (`2,03E+11`).
+- **Q1 Gesamt**: Δ ≈ −0,12 € über 14k+ Belege (Cent-Rounding).
+
+**Tests:** 16 Taxually-Tests grün, Gesamtsuite 293 passed / 3 skipped.
+
+**Standardworkflow (erweitert um Taxually):**
+```
+jtl2datev mixed-vat-check --month YYYY-MM
+jtl2datev reconcile --month YYYY-MM
+jtl2datev export --month YYYY-MM
+jtl2datev export-dutypay --month YYYY-MM
+jtl2datev export-dutypay-delta --month YYYY-MM
+jtl2datev export-taxually --month YYYY-MM          # Neu
+jtl2datev export-taxually-delta --month YYYY-MM    # Neu (falls Nachzügler)
+```
+
+---
+
 ## 2026-05-07 (Spätstunde) — Fremdwährung, DutyPay-Export, DATEV-Archiv, Standardworkflow
 
 **Fremdwährungs-Handling DATEV + DutyPay** (Commit `e0b54eb`):
