@@ -2,6 +2,20 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint C Phase 3 (`BuchungsRow`-Dataclass) umgesetzt
+
+**DATEV-Export-Modell refaktoriert — Feldabstraktion:**
+
+**W-21** `core/datev.py`: Neue `BuchungsRow`-Dataclass mit 22 benannten Feldern (umsatz, soll_haben, wkz_umsatz, kurs, basis_umsatz, basis_wkz, abrechnungsgruppe, belegfeld1/2/3/4/5, beleginfo1/2/3/4/5, eu_verkaufsland, eu_umsatzsteuer_id, eu_geschaeftsreihe, veranlagungsjahr, festschreibung, audit_tag). Methode `to_csv_row()` kapselt Mapping auf 124-Spalten-Liste via `_IDX_*`-Konstanten (Single Source of Truth für Spaltenpositionen).
+
+**`_build_row`-Refaktor:** gibt jetzt `BuchungsRow` statt `list[str]` zurück; alle drei Aufrufer in `write_extf_buchungsstapel` (regulärer Pfad, ERROR-Placeholder, UNKNOWN-Placeholder) nutzen `br.to_csv_row()`. Audit-Tag bekommt eigenes Feld, statt direkt in Beleglink-Spalte geschrieben zu werden.
+
+**Indices-Verwaltung:** `_IDX_*`-Konstanten leben jetzt nur noch innerhalb von `to_csv_row()` — keine versehentliche Verwechslung mit CSV-Header-Position mehr möglich.
+
+**Tests:** 412 passed, 14 skipped — keine Test-Anpassungen nötig (Tests inspizieren CSV-Output, nicht Indices).
+
+---
+
 ## 2026-05-10 — Sprint C Phase 1 (Architektur-Hygiene Quick Wins) umgesetzt
 
 **Stammdaten zentralisiert, RawInvoiceLine-Modell entschlackt:**

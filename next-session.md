@@ -23,7 +23,7 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 **Tests:** 412 passed, 14 skipped. ruff clean.
 
-## Offene Punkte
+## Offene Punkte — Audit & Dateneingabe
 
 0. **Manuelle Prüfung 4 ERROR/UNKNOWN-Belege (User):** Siehe `docs/audit-q1-2026-error-belege.md`. Nach Prüfung evtl. Engine-Re-Export DATEV März 2026.
 
@@ -46,10 +46,6 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 - **B-9** CLI-Umstrukturierung: `cli.py` → `cli/`-Package (Sub-Commands pro Modul). 1–2 Tage, eigene Phase.
 - **W-16** Service-Layer: `core/services/` (Abstraktions-Schicht über Repository + Tax-Engine + Export). 1–2 Tage.
 - **W-19** Repository-Erweiterung: `ArticlePricingRepository` für artikel-bezogene Preis-Lookups. 1–4h.
-
-## Phase 3 (Optimierungen)
-
-- **W-21** `BuchungsRow`-Dataclass für DATEV-Export (optimierte Aggregation). 1–4h.
 
 ## Notizen für Orchestrator
 

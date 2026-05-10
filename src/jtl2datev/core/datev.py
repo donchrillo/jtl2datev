@@ -180,6 +180,66 @@ _IDX_EU_SATZ_URSPRUNG = 123
 
 
 @dataclass
+class BuchungsRow:
+    """Domain-Repräsentation einer DATEV-EXTF-Buchungszeile.
+
+    Statt einer flachen 124-Spalten-Liste mit magischen Indices arbeitet der
+    Builder mit benannten Feldern; to_csv_row() macht das Mapping auf die
+    Spalten-Reihenfolge gemäß EXTF-v7-Spec.
+    """
+
+    umsatz: str = ""
+    soll_haben: str = ""
+    wkz_umsatz: str = ""
+    kurs: str = ""
+    basis_umsatz: str = ""
+    wkz_basis_umsatz: str = ""
+    konto: str = ""
+    gegenkonto: str = ""
+    bu_schluessel: str = ""
+    belegdatum: str = ""
+    belegfeld1: str = ""
+    belegfeld2: str = ""
+    buchungstext: str = ""
+    audit_tag: str = ""  # written to Beleglink column by to_csv_row()
+    beleginfo: list[tuple[str, str]] = field(default_factory=list)  # (art, inhalt) — up to 8
+    eu_land_bestimmung: str = ""
+    eu_satz_bestimmung: str = ""
+    eu_land_ursprung: str = ""
+    eu_satz_ursprung: str = ""
+    veranlagungsjahr: str = ""
+    festschreibung: str = ""
+
+    def to_csv_row(self) -> list[str]:
+        row = [""] * _NUM_COLS
+        row[_IDX_UMSATZ] = self.umsatz
+        row[_IDX_SH] = self.soll_haben
+        row[_IDX_WKZ_UMSATZ] = self.wkz_umsatz
+        row[_IDX_KURS] = self.kurs
+        row[_IDX_BASIS_UMSATZ] = self.basis_umsatz
+        row[_IDX_WKZ_BASIS_UMSATZ] = self.wkz_basis_umsatz
+        row[_IDX_KONTO] = self.konto
+        row[_IDX_GEGENKONTO] = self.gegenkonto
+        row[_IDX_BU] = self.bu_schluessel
+        row[_IDX_BELEGDATUM] = self.belegdatum
+        row[_IDX_BELEGFELD1] = self.belegfeld1
+        row[_IDX_BELEGFELD2] = self.belegfeld2
+        row[_IDX_BUCHUNGSTEXT] = self.buchungstext
+        if self.audit_tag:
+            row[_IDX_BELEGLINK] = self.audit_tag
+        for i, (art, inhalt) in enumerate(self.beleginfo[:8]):
+            row[20 + 2 * i] = art
+            row[21 + 2 * i] = inhalt
+        row[_IDX_EU_LAND_BESTIMMUNG] = self.eu_land_bestimmung
+        row[_IDX_EU_SATZ_BESTIMMUNG] = self.eu_satz_bestimmung
+        row[_IDX_VERANLAGUNGSJAHR] = self.veranlagungsjahr
+        row[_IDX_FESTSCHREIBUNG] = self.festschreibung
+        row[_IDX_EU_LAND_URSPRUNG] = self.eu_land_ursprung
+        row[_IDX_EU_SATZ_URSPRUNG] = self.eu_satz_ursprung
+        return row
+
+
+@dataclass
 class SkippedBeleg:
     invoice_no: str
     reason: str
@@ -298,11 +358,19 @@ def _build_row(
     buchungstext: str,
     customer_name: str = "",
     audit: bool = False,
-) -> list[str]:
-    row: list[str] = [""] * _NUM_COLS
-
-    row[_IDX_UMSATZ] = _format_decimal(gross_sum)
-    row[_IDX_SH] = "H" if invoice.is_credit_note else "S"
+) -> BuchungsRow:
+    br = BuchungsRow(
+        umsatz=_format_decimal(gross_sum),
+        soll_haben="H" if invoice.is_credit_note else "S",
+        konto=debitor,
+        gegenkonto=account.account,
+        bu_schluessel=account.bu_key,
+        belegdatum=_format_belegdatum(invoice.invoice_date),
+        belegfeld1=_safe_text(invoice.jtl_external_order_no or ""),
+        buchungstext=_safe_text(buchungstext),
+        veranlagungsjahr=str(invoice.invoice_date.year),
+        festschreibung="0",
+    )
 
     if invoice.currency != "EUR":
         cf = invoice.currency_factor
@@ -314,62 +382,40 @@ def _build_row(
             )
         else:
             basis = (gross_sum / cf).quantize(Decimal("0.01"))
-            row[_IDX_WKZ_UMSATZ] = invoice.currency
-            row[_IDX_KURS] = _format_kurs(cf)
-            row[_IDX_BASIS_UMSATZ] = f"{abs(basis):.2f}".replace(".", ",")
-            row[_IDX_WKZ_BASIS_UMSATZ] = "EUR"
+            br.wkz_umsatz = invoice.currency
+            br.kurs = _format_kurs(cf)
+            br.basis_umsatz = f"{abs(basis):.2f}".replace(".", ",")
+            br.wkz_basis_umsatz = "EUR"
 
-    row[_IDX_KONTO] = debitor
-    row[_IDX_GEGENKONTO] = account.account
-    row[_IDX_BU] = account.bu_key
-    row[_IDX_BELEGDATUM] = _format_belegdatum(invoice.invoice_date)
-    row[_IDX_BELEGFELD1] = _safe_text(invoice.jtl_external_order_no or "")
-    row[_IDX_BUCHUNGSTEXT] = _safe_text(buchungstext)
     if audit and account.audit_tag:
-        row[_IDX_BELEGLINK] = account.audit_tag
+        br.audit_tag = account.audit_tag
 
-    # Beleginfo 1: Externerauftrag
-    row[_IDX_BELEGINFO_ART1] = "Externerauftrag"
-    row[_IDX_BELEGINFO_INH1] = _safe_text(invoice.jtl_external_order_no or "")
-    # Beleginfo 2: KundenNr
-    row[_IDX_BELEGINFO_ART2] = "KundenNr"
-    row[_IDX_BELEGINFO_INH2] = _safe_text(invoice.customer_no or "")
-    # Beleginfo 3: Kundenname
-    row[_IDX_BELEGINFO_ART3] = "Kundenname"
-    row[_IDX_BELEGINFO_INH3] = _safe_text(customer_name)
-    # Beleginfo 4: geliefert aus
-    row[_IDX_BELEGINFO_ART4] = "geliefert aus"
-    row[_IDX_BELEGINFO_INH4] = invoice.warehouse_country
-    # Beleginfo 5: geliefert nach
-    row[_IDX_BELEGINFO_ART5] = "geliefert nach"
-    row[_IDX_BELEGINFO_INH5] = invoice.ship_to.country_iso
+    br.beleginfo = [
+        ("Externerauftrag", _safe_text(invoice.jtl_external_order_no or "")),
+        ("KundenNr", _safe_text(invoice.customer_no or "")),
+        ("Kundenname", _safe_text(customer_name)),
+        ("geliefert aus", invoice.warehouse_country),
+        ("geliefert nach", invoice.ship_to.country_iso),
+    ]
 
-    # EU columns (skip when no decision is available — error/unknown placeholder rows)
     if decision_for_eu_cols is not None:
         treatment = decision_for_eu_cols.decision.treatment
         if treatment == TaxTreatment.OSS_B2C:
-            row[_IDX_EU_LAND_BESTIMMUNG] = invoice.ship_to.country_iso
+            br.eu_land_bestimmung = invoice.ship_to.country_iso
             dest_rate = STANDARD_VAT_RATE.get(invoice.ship_to.country_iso)
             if dest_rate is not None:
-                row[_IDX_EU_SATZ_BESTIMMUNG] = str(int(dest_rate) if dest_rate == int(dest_rate) else dest_rate)
+                br.eu_satz_bestimmung = str(int(dest_rate) if dest_rate == int(dest_rate) else dest_rate)
         elif treatment == TaxTreatment.IGL_B2B:
             vat_id = decision_for_eu_cols.decision.cleaned_vat_id
             if vat_id:
-                row[_IDX_EU_LAND_BESTIMMUNG] = vat_id
+                br.eu_land_bestimmung = vat_id
 
-    # EU Ursprung: our own VAT ID when warehouse is non-DE
     if invoice.warehouse_country != "DE":
         own_vat = settings.own_vat_ids.get(invoice.warehouse_country, "")
         if own_vat:
-            row[_IDX_EU_LAND_URSPRUNG] = own_vat
+            br.eu_land_ursprung = own_vat
 
-    # Veranlagungsjahr
-    row[_IDX_VERANLAGUNGSJAHR] = str(invoice.invoice_date.year)
-
-    # Festschreibung = 0 (not locked)
-    row[_IDX_FESTSCHREIBUNG] = "0"
-
-    return row
+    return br
 
 
 def write_extf_buchungsstapel(
@@ -450,7 +496,7 @@ def write_extf_buchungsstapel(
                     gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
                     first_ld = line_decisions[0] if line_decisions else None
                     placeholder = DatevAccount(account="", bu_key="", audit_tag=problem_marker)
-                    row = _build_row(
+                    br = _build_row(
                         invoice=invoice,
                         gross_sum=gross_sum,
                         account=placeholder,
@@ -461,8 +507,8 @@ def write_extf_buchungsstapel(
                         customer_name=customer_name,
                         audit=audit,
                     )
-                    row[_IDX_BELEGFELD2] = problem_marker
-                    writer.writerow(row)
+                    br.belegfeld2 = problem_marker
+                    writer.writerow(br.to_csv_row())
                     report.bookings_written += 1
                     continue
 
@@ -484,7 +530,7 @@ def write_extf_buchungsstapel(
                 if not line_accounts:
                     gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
                     placeholder = DatevAccount(account="", bu_key="", audit_tag="UNKNOWN")
-                    row = _build_row(
+                    br = _build_row(
                         invoice=invoice,
                         gross_sum=gross_sum,
                         account=placeholder,
@@ -495,9 +541,9 @@ def write_extf_buchungsstapel(
                         customer_name=customer_name,
                         audit=audit,
                     )
-                    row[_IDX_BELEGFELD2] = "UNKNOWN"
+                    br.belegfeld2 = "UNKNOWN"
                     report.skipped_unknown += 1
-                    writer.writerow(row)
+                    writer.writerow(br.to_csv_row())
                     report.bookings_written += 1
                     continue
 
@@ -512,7 +558,7 @@ def write_extf_buchungsstapel(
 
                 for (acct_no, bu_key), (gross_sum, first_ld, tag) in groups.items():
                     datev_acct = DatevAccount(account=acct_no, bu_key=bu_key, audit_tag=tag)
-                    row = _build_row(
+                    br = _build_row(
                         invoice=invoice,
                         gross_sum=gross_sum,
                         account=datev_acct,
@@ -527,10 +573,10 @@ def write_extf_buchungsstapel(
                         ref = compare_map.get(invoice.invoice_no)
                         if ref is not None and (acct_no, bu_key) not in ref:
                             # Don't overwrite ERROR/UNKNOWN markers with X
-                            if not row[_IDX_BELEGFELD2]:
-                                row[_IDX_BELEGFELD2] = "X"
+                            if not br.belegfeld2:
+                                br.belegfeld2 = "X"
                                 report.diff_marked += 1
-                    writer.writerow(row)
+                    writer.writerow(br.to_csv_row())
                     report.bookings_written += 1
 
         os.replace(tmp, out_path)

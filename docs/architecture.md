@@ -27,7 +27,7 @@
 | `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten → TaxTreatment (DOMESTIC / OSS_B2C / IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR). VAT-ID-Format-Plausibilität, GB-Sonderfall. |
 | `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
 | `core/reconcile.py` | ✓ | Plausi-Check: JTL-gespeichert vs. Engine. ReconcileMismatch-Report mit Severity (error/warning/info). Mismatch-CSV-Export. |
-| `core/datev.py` | ✓ | DATEV-EXTF-CSV-Erzeugung (v7.0, Format 12). Windows-1252, CRLF. Beide Flags `--compare-to` und `--audit` implementiert. |
+| `core/datev.py` | ✓ | DATEV-EXTF-CSV-Erzeugung (v7.0, Format 12). Windows-1252, CRLF. `BuchungsRow`-Dataclass (22 benannte Felder) mit `to_csv_row()`-Methode kapselt Spalten-Mapping. Flags `--compare-to` und `--audit` implementiert. |
 | `core/dutypay.py` | ✓ | DutyPay-CSV-Export (98 Spalten OSS-Meldungsformat, openpyxl, UTF-8, Semikolon-Trennzeichen, Dezimalkomma). |
 | `core/dutypay_delta.py` | ✓ | Delta-Diff für DutyPay (Match nach DocumentID, `--shift-to-period` für Folgemonats-Nachmeldungen). |
 | `core/taxually.py` | ✓ | Taxually-XLSX-Export (20 Spalten, Sheet `Your data`, Punkt-Dezimal, VAT-Reporting-Country-Entscheidungslogik). |
