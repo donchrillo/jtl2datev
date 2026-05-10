@@ -166,14 +166,26 @@ def determine_kind_of_business(invoice: RawInvoice) -> KindOfBusiness:
     """Classify an invoice into the DutyPay KindOfBusiness bucket.
 
     Decision order matches the spec's KindOfBusiness table:
-    1. is_credit_note → REFUND / B2B-REFUND / EXPORT-REFUND variants
+    1. is_credit_note OR negative total_gross → REFUND / B2B-REFUND / EXPORT-REFUND
     2. third-country destination → EXPORT
     3. B2B (cross-border EU with valid customer VAT ID) → B2B
     4. Everything else → SALE (domestic or cross-border B2C)
     """
     wh = invoice.warehouse_country
     dest = invoice.ship_to.country_iso
-    is_refund = invoice.is_credit_note
+    # W-5: Vorzeichen sekundieren — JTL kann theoretisch in tRechnung negative
+    # Beträge ohne is_credit_note-Flag liefern (manuelle Korrekturbelege).
+    # Nur auf den Flag zu vertrauen würde solche Fälle als SALE buchen → Inkonsistenz.
+    total_gross = sum((line.gross for line in invoice.lines), Decimal("0"))
+    flag_refund = invoice.is_credit_note
+    sign_refund = total_gross < 0
+    if total_gross != 0 and flag_refund != sign_refund:
+        logger.warning(
+            "DutyPay-Klassifikation: invoice_no=%s is_credit_note=%s vs total_gross=%s — "
+            "behandle als REFUND (logische ODER-Verknüpfung).",
+            invoice.invoice_no, flag_refund, total_gross,
+        )
+    is_refund = flag_refund or sign_refund
     has_vat_id = bool(invoice.bill_to.vat_id or invoice.ship_to.vat_id)
     cross_border = wh != dest
     third_country = _is_third_country(dest)

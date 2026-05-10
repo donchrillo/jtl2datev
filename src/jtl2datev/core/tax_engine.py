@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from jtl2datev.core.models import RawInvoice, RawInvoiceLine, TaxDecision, TaxTreatment
-from jtl2datev.core.reference_data import EU_MEMBER_STATES
+from jtl2datev.core.reference_data import EU_MEMBER_STATES, STANDARD_VAT_RATE
 
 EU_COUNTRIES: frozenset[str] = EU_MEMBER_STATES
 
@@ -14,40 +14,6 @@ _AMAZON_PLATFORM_PREFIX = "amazon"  # matches Amazon.de, Amazon.co.uk, Amazon.fr
 # UK (post-Brexit) und CH (Schweizer Plattformbesteuerung MWSTG Art. 20a,
 # ab 01.01.2025) — Amazon erhebt lokale MWSt selbst.
 MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB", "CH"})
-
-# Standard VAT rates per country (2026). Reduced rates not modelled —
-# Plausi mismatches there end up as warn, never error.
-STANDARD_VAT_RATE: dict[str, Decimal] = {
-    "AT": Decimal("20"),
-    "BE": Decimal("21"),
-    "BG": Decimal("20"),
-    "CY": Decimal("19"),
-    "CZ": Decimal("21"),
-    "DE": Decimal("19"),
-    "DK": Decimal("25"),
-    "EE": Decimal("24"),  # ab 01.07.2025 (vorher 22 %)
-    "ES": Decimal("21"),
-    "FI": Decimal("25.5"),
-    "FR": Decimal("20"),
-    "GR": Decimal("24"),
-    "HR": Decimal("25"),
-    "HU": Decimal("27"),
-    "IE": Decimal("23"),
-    "IT": Decimal("22"),
-    "LT": Decimal("21"),
-    "LU": Decimal("17"),
-    "LV": Decimal("21"),
-    "MT": Decimal("18"),
-    "NL": Decimal("21"),
-    "PL": Decimal("23"),
-    "PT": Decimal("23"),
-    "RO": Decimal("21"),  # ab 01.01.2026 (vorher 19 %, OUG 156/2024)
-    "SE": Decimal("25"),
-    "SI": Decimal("22"),
-    "SK": Decimal("23"),
-    "GB": Decimal("20"),
-    "CH": Decimal("8.1"),
-}
 
 _ZERO = Decimal("0")
 

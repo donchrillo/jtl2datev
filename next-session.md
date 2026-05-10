@@ -2,7 +2,7 @@
 
 ## Status
 
-**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) + Sprint C Phase 3 (BuchungsRow-Refactor) + Sprint D (Compliance-Polish) umgesetzt (2026-05-10).**
+**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) + Sprint C Phase 3 (BuchungsRow-Refactor) + Sprint D (Compliance-Polish) + W-5 (DutyPay-Vorzeichen-Check) umgesetzt (2026-05-10).**
 
 **Architektur-Cleanup:** `core/reference_data.py` zentralisiert Stammdaten (EU-Länder, Währungen, Plattformen, Min-Datum). `RawInvoiceLine` auf Kern-Felder reduziert (12 nie gelesene Item-Felder entfernt). `BuchungsRow`-Dataclass mit 22 benannten Feldern, `to_csv_row()`-Methode als Single Source of Truth für 124-Spalten-Mapping. 427 Tests grün.
 
@@ -28,7 +28,13 @@ jtl2datev export-verbringung --report ... --month YYYY-MM  # Amazon-FBA-Transfer
 jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 ```
 
-**Tests:** 427 passed, 14 skipped. ruff clean.
+**W-5 (DutyPay-Vorzeichen-Check):** `core/dutypay.py:determine_kind_of_business()` klassifiziert jetzt Belege auch dann als REFUND, wenn `total_gross < 0` ist — unabhängig vom `is_credit_note`-Flag. Mismatch (Flag ≠ Vorzeichen, Brutto ≠ 0) loggt WARNING. Schützt vor manuellen Korrekturbelegen in `tRechnung` ohne Gutschrift-Flag.
+
+**B-9 (Repository-Interface):** `core/repositories.py` um `InvoiceRepository.find_mixed_vat_belege()` und neue ABC `ArticlePricingRepository.lookup_ek_prices()` erweitert. JTL-Implementierungen `JtlInvoiceRepository.find_mixed_vat_belege` und neue `JtlArticlePricingRepository` in `core/db_jtl.py`. CLI (`mixed-vat-check`, `export-verbringung`) ruft jetzt Repository-Methoden statt freie Modul-Funktionen → ERP-Migration berührt nur noch Repository-Implementierungen, nicht CLI/Service-Layer.
+
+**W-20 (Stammdaten-Hygiene):** `_DEBITOR_BY_PAYMENT`, `_DOMESTIC_MAP` (vorher funktions-lokal in `rules.py`) und `STANDARD_VAT_RATE` (vorher in `tax_engine.py`) nach `core/reference_data.py` umgezogen — alle drei sind Mandanten-/Stammdaten und gehören zur zentralen Single Source of Truth. `vat_rate_for(country, on_date=None)`-Helper als zukunftsfähige Signatur für Period-Validity (Logik selbst noch nicht implementiert, Tool produktiv erst 2026). Module-lokale Re-Bindings erhalten — kein API-Bruch.
+
+**Tests:** 430 passed, 14 skipped. ruff clean (für berührte Dateien; 2 pre-existing Lint-Fehler in `cli.py` Top-of-File unverändert).
 
 ## Offene Punkte — Audit & Dateneingabe
 
@@ -48,10 +54,14 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 8. **SK-Departure-Bewegungen Taxually-Klärung (User):** SK→CZ/DE/PL FC_TRANSFERs werden aktuell mit leerer Departure-VAT-ID exportiert. Steuerlich ordnen die Finanzämter diese bisher Amazon zu (nicht uns), Pro-Forma-PDFs werden weiterhin als Beleg erzeugt. Offen: Verarbeitet Taxually XLSX-Zeilen mit leerer SK-VAT überhaupt? Falls nein, alternative Strategien: (a) SK-Departure-Zeilen aus dem XLSX rausfiltern (PDFs trotzdem behalten), (b) komplett weglassen. Vor Q2-Meldung klären.
 
+## Offene Review-Punkte (Code-Lücken)
+
+- **W-20-Period-Validity** (deferred bis Re-Exports älterer Monate nötig werden): `STANDARD_VAT_RATE` von `dict[country, rate]` auf `dict[country, list[(from_date, rate)]]` umstellen, `vat_rate_for(country, on_date)` echte Period-Logik geben. Aufwand >4h. Aktuell wird `on_date` ignoriert.
+- **W-20-Settings-Override** (deferred bis ERP-Multi-Mandanten): Konten-Mappings (`DOMESTIC_ACCOUNT_BY_WAREHOUSE`, `DEBITOR_BY_PAYMENT`) sind heute Modul-Konstanten. Für Multi-Mandanten-Setup müssten sie aus Settings/DB pro Mandant kommen.
+
 ## Phase 2 (Erweiterungen)
 
-- **B-9** CLI-Umstrukturierung: `cli.py` → `cli/`-Package (Sub-Commands pro Modul). 1–2 Tage, eigene Phase.
-- **W-16** Service-Layer: `core/services/` (Abstraktions-Schicht über Repository + Tax-Engine + Export). 1–2 Tage.
+- **W-16** CLI-Umstrukturierung + Service-Layer: `cli.py` → `cli/`-Package (Sub-Commands pro Modul) + `core/services/` als Abstraktions-Schicht über Repository + Tax-Engine + Export. 1–2 Tage, eigene Phase.
 - **W-19** Repository-Erweiterung: `ArticlePricingRepository` für artikel-bezogene Preis-Lookups. 1–4h.
 
 ## Notizen für Orchestrator

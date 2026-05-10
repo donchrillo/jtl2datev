@@ -2,6 +2,53 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — W-20 (Stammdaten-Hygiene) umgesetzt
+
+**`core/reference_data.py`:** drei weitere Konstanten zentralisiert:
+- `DOMESTIC_ACCOUNT_BY_WAREHOUSE` (vorher funktions-lokal in `rules.py:map_to_datev_account` → wurde bei jedem Aufruf neu allokiert)
+- `DEBITOR_BY_PAYMENT` (vorher `_DEBITOR_BY_PAYMENT` in `rules.py`)
+- `STANDARD_VAT_RATE` (vorher in `tax_engine.py`)
+
+**`vat_rate_for(country, on_date=None)`:** neuer Helper als zukunftsfähige Signatur — *on_date* wird aktuell ignoriert. Sobald historische Re-Exports älterer Monate anstehen, kann `STANDARD_VAT_RATE` auf `{country: [(from_date, rate), …]}` erweitert werden, ohne Aufrufstellen anzupassen.
+
+**Module-lokale Re-Bindings:** `rules.py` importiert beide Mappings unter den bestehenden privaten Namen (`_DOMESTIC_MAP`, `_DEBITOR_BY_PAYMENT`); `tax_engine.py` re-exportiert `STANDARD_VAT_RATE`. Kein API-Bruch — alle Aufrufer (`datev.py`, `db_jtl.py`, `dutypay.py`) funktionieren unverändert.
+
+**Bewusst nicht umgesetzt:**
+- Period-Validity-Logik in `vat_rate_for` — Tool produktiv erst 2026, Re-Exports älterer Monate nicht akut.
+- Settings-Overrides für Konten-Mappings — wird erst bei Multi-Mandanten-ERP relevant.
+
+**Tests:** 430 passed, 14 skipped.
+
+---
+
+## 2026-05-10 — B-9 (Repository-Interface erweitert) umgesetzt
+
+**Ziel:** ERP-Migration soll später nur Repository-Implementierungen tauschen, nicht CLI/Service-Layer.
+
+**`core/repositories.py`:**
+- `InvoiceRepository.find_mixed_vat_belege(date_from, date_to)` als zweite abstrakte Methode hinzugefügt — Mixed-VAT-Detection war bisher direkt am `Engine` (`preflight.find_mixed_vat_belege(engine, …)`) und damit am Repository vorbei.
+- Neue ABC `ArticlePricingRepository.lookup_ek_prices(skus, *, asin_by_sku, bware_strategy)` — Verbringungs-Preis-Lookup war ebenfalls direkt am `Engine` (`verbringung_pricing.lookup_prices(skus, engine, …)`).
+
+**`core/db_jtl.py`:**
+- `JtlInvoiceRepository.find_mixed_vat_belege` delegiert an `preflight.find_mixed_vat_belege`.
+- Neue `JtlArticlePricingRepository` wrappt `verbringung_pricing.lookup_prices`, parametrisiert die JTL-Tabellennamen (mapping/artikel/beschreibung/angebot) konstruktor-seitig.
+
+**`cli.py`:** `mixed-vat-check` und `export-verbringung` instanziieren jetzt das jeweilige Repository statt die freien Modul-Funktionen direkt aufzurufen. Modul-Funktionen bleiben als Implementierungs-Detail erhalten (Test-Mocks und `preflight`-Tests nutzen sie weiter).
+
+**Tests:** 430 passed (test_cli-Patch-Targets von `verbringung_pricing.lookup_prices` auf `db_jtl.lookup_prices` umgestellt — folgt der neuen Aufruf-Kette), 14 skipped.
+
+---
+
+## 2026-05-10 — W-5 (DutyPay-Vorzeichen-Check) umgesetzt
+
+**`core/dutypay.py:determine_kind_of_business()`:** Klassifikation als REFUND erfolgt jetzt via `is_credit_note OR total_gross < 0`. Schützt vor manuellen Korrekturbelegen in `tRechnung`, die negatives Brutto haben, aber kein Gutschrift-Flag — vorher wären solche Belege als SALE klassifiziert worden, was zu inkonsistenter MarketZoneGross-Vorzeichenführung geführt hätte.
+
+**Mismatch-WARN:** Wenn `is_credit_note != (total_gross < 0)` und Brutto ≠ 0, loggt der Pfad eine WARNING mit `invoice_no`, Flag- und Brutto-Wert (für Audit-Trail in `dutypay.log`).
+
+**Tests:** 430 passed (+3 neue: negativ-ohne-Flag, positiv-mit-Flag, Null-Brutto-keine-Warnung), 14 skipped. ruff clean.
+
+---
+
 ## 2026-05-10 — Sprint D (Compliance-Polish) umgesetzt
 
 **Robustheit, Input-Validation, Ressourcen-Cleanup:**

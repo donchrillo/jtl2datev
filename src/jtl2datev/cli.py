@@ -1158,8 +1158,7 @@ def mixed_vat_check_cmd(
     und betroffene Belege in JTL prüfen/korrigieren.
     """
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import managed_engine
-    from jtl2datev.core.preflight import find_mixed_vat_belege
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
 
     df, dt_ = _resolve_date_range(date_from, date_to, month_str)
 
@@ -1167,7 +1166,8 @@ def mixed_vat_check_cmd(
 
     try:
         with managed_engine(settings) as engine:
-            belege = find_mixed_vat_belege(engine, date_from=df, date_to=dt_)
+            repo = JtlInvoiceRepository(engine)
+            belege = repo.find_mixed_vat_belege(date_from=df, date_to=dt_)
     except Exception as exc:
         click.echo(f"Fehler beim Mixed-VAT-Check: {exc}")
         raise SystemExit(1) from exc
@@ -1319,14 +1319,13 @@ def export_verbringung_cmd(
     from decimal import Decimal, InvalidOperation
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import managed_engine
+    from jtl2datev.core.db_jtl import JtlArticlePricingRepository, managed_engine
     from jtl2datev.core.exchange_rates import set_rate
     from jtl2datev.core.verbringung_parser import parse_amazon_report
     from jtl2datev.core.verbringung_pdf import (
         COUNTRY_CURRENCIES,
         generate_proforma_pdfs,
     )
-    from jtl2datev.core.verbringung_pricing import lookup_prices
     from jtl2datev.core.verbringung_taxually import format_verbringung_xlsx
 
     year, month = _parse_month(month_str)
@@ -1397,11 +1396,11 @@ def export_verbringung_cmd(
         unique_skus = list({m.seller_sku for m in movements})
         asin_by_sku = {m.seller_sku: m.asin for m in movements if m.asin and m.seller_sku}
         with managed_engine(settings) as engine:
-            pricing = lookup_prices(
+            pricing_repo = JtlArticlePricingRepository(engine)
+            pricing = pricing_repo.lookup_ek_prices(
                 unique_skus,
-                engine,
-                bware_strategy=bware_pricing_strategy,
                 asin_by_sku=asin_by_sku,
+                bware_strategy=bware_pricing_strategy,
             )
 
         mapped = sum(1 for p in pricing.values() if p.ek_netto is not None)

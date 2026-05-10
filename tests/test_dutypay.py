@@ -154,6 +154,37 @@ class TestKindOfBusiness:
         inv = _invoice(wh="FR", dest="FR")
         assert determine_kind_of_business(inv) == KindOfBusiness.SALE
 
+    # W-5: Vorzeichen-Check sekundiert is_credit_note-Flag
+    def test_negative_gross_without_flag_is_refund(self, caplog) -> None:
+        # Manueller Korrekturbeleg in tRechnung mit negativem Brutto, kein is_credit_note
+        neg_line = _line(gross=Decimal("-119.00"), net=Decimal("-100.00"))
+        inv = _invoice(wh="DE", dest="DE", is_credit_note=False, lines=(neg_line,))
+        with caplog.at_level("WARNING", logger="jtl2datev.core.dutypay"):
+            kind = determine_kind_of_business(inv)
+        assert kind == KindOfBusiness.REFUND
+        assert any("is_credit_note=False" in r.message and "total_gross=-119" in r.message
+                   for r in caplog.records)
+
+    def test_credit_note_flag_with_positive_gross_warns_but_refund(self, caplog) -> None:
+        # SRK-Sonderfall (is_credit_note=False bereits gesetzt durch Repository)
+        # ist hier nicht abgebildet — wir testen stattdessen umgekehrte Inkonsistenz:
+        # is_credit_note=True bei positivem Brutto soll WARN + REFUND-Klassifikation behalten.
+        inv = _invoice(wh="DE", dest="DE", is_credit_note=True)  # positive default line
+        with caplog.at_level("WARNING", logger="jtl2datev.core.dutypay"):
+            kind = determine_kind_of_business(inv)
+        assert kind == KindOfBusiness.REFUND
+        assert any("is_credit_note=True" in r.message and "total_gross=119" in r.message
+                   for r in caplog.records)
+
+    def test_zero_gross_no_warning(self, caplog) -> None:
+        # 0,00-€-Belege (Probebuchungen) dürfen nicht warnen, egal welcher Flag
+        zero_line = _line(gross=Decimal("0"), net=Decimal("0"))
+        inv = _invoice(wh="DE", dest="DE", is_credit_note=True, lines=(zero_line,))
+        with caplog.at_level("WARNING", logger="jtl2datev.core.dutypay"):
+            kind = determine_kind_of_business(inv)
+        assert kind == KindOfBusiness.REFUND  # Flag entscheidet
+        assert not any("DutyPay-Klassifikation" in r.message for r in caplog.records)
+
 
 # ── Derived field tests ───────────────────────────────────────────────────────
 

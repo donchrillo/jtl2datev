@@ -10,8 +10,10 @@ from sqlalchemy import Engine, text
 from jtl2datev.core.config import Settings
 from jtl2datev.core.models import PartyAddress, RawInvoice, RawInvoiceLine
 from jtl2datev.core.reference_data import HARD_MIN_INVOICE_DATE as _MIN_DATE, PLATFORM_COUNTRY as _PLATFORM_COUNTRY
-from jtl2datev.core.repositories import InvoiceRepository
+from jtl2datev.core.preflight import MixedVatBeleg, find_mixed_vat_belege
+from jtl2datev.core.repositories import ArticlePricingRepository, InvoiceRepository
 from jtl2datev.core.tax_engine import STANDARD_VAT_RATE
+from jtl2datev.core.verbringung_pricing import PricingResult, lookup_prices
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +299,11 @@ class JtlInvoiceRepository(InvoiceRepository):
         yield from self._fetch_own(date_from=date_from, date_to=date_to)
         yield from self._fetch_external(date_from=date_from, date_to=date_to)
         yield from self._fetch_credit_notes(date_from=date_from, date_to=date_to)
+
+    def find_mixed_vat_belege(
+        self, *, date_from: date, date_to: date
+    ) -> list[MixedVatBeleg]:
+        return find_mixed_vat_belege(self._engine, date_from=date_from, date_to=date_to)
 
     def _fetch_own(self, *, date_from: date, date_to: date) -> Iterator[RawInvoice]:
         hard_min = max(date_from, _MIN_DATE)
@@ -662,3 +669,45 @@ def managed_engine(settings: Settings):  # type: ignore[return]
         yield engine
     finally:
         engine.dispose()
+
+
+class JtlArticlePricingRepository(ArticlePricingRepository):
+    """JTL-spezifische Implementierung von ArticlePricingRepository.
+
+    Wrappt verbringung_pricing.lookup_prices (MSSQL-Tier-Lookup mit
+    SKU-/B-Ware-/ASIN-Auflösung). ERP-Implementierungen brauchen ihre eigene
+    Bewertungs-Logik und können nicht 1:1 die JTL-Tier-Strategie übernehmen.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        mapping_table: str = "dbo.pf_amazon_angebot_mapping",
+        artikel_table: str = "dbo.tArtikel",
+        beschreibung_table: str = "dbo.tArtikelBeschreibung",
+        angebot_table: str = "dbo.pf_amazon_angebot",
+    ) -> None:
+        self._engine = engine
+        self._mapping_table = mapping_table
+        self._artikel_table = artikel_table
+        self._beschreibung_table = beschreibung_table
+        self._angebot_table = angebot_table
+
+    def lookup_ek_prices(
+        self,
+        skus: list[str],
+        *,
+        asin_by_sku: dict[str, str] | None = None,
+        bware_strategy: str = "ten_percent",
+    ) -> dict[str, PricingResult]:
+        return lookup_prices(
+            skus,
+            self._engine,
+            mapping_table=self._mapping_table,
+            artikel_table=self._artikel_table,
+            beschreibung_table=self._beschreibung_table,
+            angebot_table=self._angebot_table,
+            bware_strategy=bware_strategy,
+            asin_by_sku=asin_by_sku,
+        )

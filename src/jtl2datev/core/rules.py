@@ -4,7 +4,11 @@ import logging
 from dataclasses import dataclass
 
 from jtl2datev.core.models import RawInvoice, RawInvoiceLine, TaxDecision, TaxTreatment
-from jtl2datev.core.reference_data import EU_MEMBER_STATES
+from jtl2datev.core.reference_data import (
+    DEBITOR_BY_PAYMENT as _DEBITOR_BY_PAYMENT,
+    DOMESTIC_ACCOUNT_BY_WAREHOUSE as _DOMESTIC_MAP,
+    EU_MEMBER_STATES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,32 +17,6 @@ _EU_NON_DE: frozenset[str] = EU_MEMBER_STATES - {"DE"}
 
 # Helgoland is customs-free, treated like third-country for VAT purposes
 _HELGOLAND = "HLG"
-
-# Debitor account by payment method — case-insensitive, stripped
-_DEBITOR_BY_PAYMENT: dict[str, int] = {
-    "bar": 10001000,
-    "bar bei selbstabholung": 10001000,
-    "überweisung": 10002000,
-    "vorkasse": 10002000,
-    "rechnung manuell": 10002000,
-    "paypal": 10004000,
-    "paypal-express": 10004000,
-    "amazonpayments": 10005000,
-    "amazon payments": 10005000,
-    "amazon_payments": 10005000,
-    "ebay rechnungskauf": 10006000,
-    "ebay managed payments": 10006000,
-    "gewährleistung": 10007000,
-    "real": 10008000,
-    "kaufland": 10008000,
-    "kaufland.de": 10008000,
-    "rechnung_mit_klarna": 10009000,
-    "sofortbezahlen klarna": 10009000,
-    "shopify_payments": 10010000,
-    "otto": 10011000,
-    "otto.de": 10011000,
-    "temu": 10012000,
-}
 
 
 @dataclass(frozen=True)
@@ -122,11 +100,6 @@ def map_to_datev_account(
                 audit_tag=f"DOM-RC-{wh}",
                 note="national reverse-charge DE",
             )
-        _DOMESTIC_MAP: dict[str, str] = {
-            "DE": "4400000", "FR": "4324000", "IT": "4326000",
-            "ES": "4323000", "PL": "4327000", "CZ": "4322000",
-            "GB": "4325000",
-        }
         account = _DOMESTIC_MAP.get(wh)
         if account:
             rate = int(line_vat_rate) if line_vat_rate == int(line_vat_rate) else line_vat_rate

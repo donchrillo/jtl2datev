@@ -363,7 +363,7 @@ def test_export_verbringung_full_run_with_mock_db(
     out_xlsx = tmp_path / "out.xlsx"
     out_pdf_dir = tmp_path / "pdfs"
 
-    with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
+    with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
         mock_engine.return_value = MagicMock()
@@ -417,7 +417,7 @@ def test_export_verbringung_missing_ek_csv_created(
 
     out_missing = tmp_path / "missing.csv"
 
-    with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
+    with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
         mock_engine.return_value = MagicMock()
@@ -464,7 +464,7 @@ def test_export_verbringung_strict_missing_rate_exits(
         ),
     }
     # No rates available → PLN missing → strict should abort
-    with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
+    with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value={}):
         mock_engine.return_value = MagicMock()
@@ -511,7 +511,7 @@ def test_export_verbringung_interactive_prompt_saves_rate(
         ),
     }
 
-    with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
+    with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value={}), \
          patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
@@ -560,7 +560,7 @@ def test_export_verbringung_interactive_empty_input_aborts(
         ),
     }
 
-    with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
+    with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value={}):
         mock_engine.return_value = MagicMock()
