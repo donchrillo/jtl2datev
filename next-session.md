@@ -1,5 +1,12 @@
 # Next Session
 
+## STATUS 2026-05-11: Repo eingefroren
+
+Der Code ist als `accounting`-Modul in toci-erp integriert. Weiterentwicklung dort.
+Dieser Plan unten gilt nur, falls jtl2datev wieder separat aktiviert werden sollte.
+
+---
+
 ## Stand: Sprint abgeschlossen, läuft End-to-End
 
 jtl2datev ist als Tool in toci-erp integriert (Dev-Setup):
