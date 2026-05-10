@@ -2,6 +2,50 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — W-16-B (Service-Layer für DATEV/DutyPay/Taxually) umgesetzt
+
+**Architektur-Schicht:** neue `src/jtl2datev/core/services/`-Modul-Familie als Application-Layer zwischen CLI/API (Presentation) und Domain/Infrastructure. Strikte Schichten-Trennung im Hinblick auf das geplante FastAPI-React-Frontend.
+
+```
+core/services/
+  __init__.py            # Doku-Stub (Service-Vertragsspezifikation)
+  datev_service.py       # DatevExportRequest/Result + DatevDeltaRequest/Result
+  dutypay_service.py     # DutypayExportRequest/Result + DutypayDeltaRequest/Result
+  taxually_service.py    # TaxuallyExportRequest/Result + TaxuallyDeltaRequest/Result
+```
+
+**Vertrag pro Service:**
+- Nimmt typed `*Request`-Dataclass mit `repo: InvoiceRepository`, `settings: Settings`, `date_from/date_to`, `out_path`, exporter-spezifische Optionen.
+- Schreibt Datei nach `out_path`, gibt typed `*Result`-Dataclass zurück (paths + report).
+- Wirft typed Exceptions (`NoBaselineError` aus `core.datev_delta` etc.).
+- **Kein** `print`/`click.echo`, **kein** `SystemExit`, **kein** Engine-Lifecycle.
+- **Kein** Archive-Aufruf — Archivierung ist Orchestration-Verantwortung des Aufrufers (CLI/API).
+
+**CLI-Refactor:** `cli/export_datev.py`, `cli/export_dutypay.py`, `cli/export_taxually.py` rufen jetzt die Services auf und übernehmen nur noch:
+- Argument-Parsing (Click)
+- Default-Pfad-Auflösung (z. B. `exports/datev/YYYY-MM.csv`)
+- `managed_engine()` + `JtlInvoiceRepository`-Konstruktion
+- Archive-Aufrufe (`archive_export`, `archive_delta`)
+- Human-readable Echo-Output
+- Exception → `SystemExit(1)`-Mapping
+
+**FastAPI-Vorbereitung:** Eine HTTP-Route würde dieselben Services aufrufen, anstelle der CLI-Wrapper:
+```python
+@app.get("/export/datev")
+def datev_export(period: str, ...) -> FileResponse:
+    with managed_engine(settings) as engine:
+        result = export_datev(DatevExportRequest(...))
+    return FileResponse(result.out_path, ...)
+```
+
+**Bewusst nicht umgesetzt (Phase 2):**
+- `export-verbringung`-Service: enthält interaktive Wechselkurs-Prompts (CLI-Spezifik). Bei FastAPI-Anbindung müsste der Prompt-Pfad raus aus dem Service.
+- `reconcile`/`mixed-vat-check`-Services: aktuell CLI-only, kein klarer HTTP-Use-Case.
+
+**Tests:** 431 passed (Verhalten 1:1 erhalten), 14 skipped. ruff clean.
+
+---
+
 ## 2026-05-10 — W-16-A (CLI-Package-Split) umgesetzt
 
 **`src/jtl2datev/cli.py` (1.591 Zeilen) in `src/jtl2datev/cli/`-Package gesplittet:**

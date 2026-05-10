@@ -57,8 +57,10 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 ## Phase 2 (Erweiterungen)
 
-- **W-16-B (Service-Layer)** offen: `core/services/`-Schicht über Repository + Tax-Engine + Export. CLI-Commands würden zu sehr dünnen Wrappern. 1 Tag. **Hinweis:** W-16-A (CLI → `cli/`-Package, 1.591-Zeilen-Datei in 8 Module gesplittet) wurde 2026-05-10 umgesetzt.
+- **W-16-B-Rest (Verbringung/Reconcile/Mixed-VAT als Services)**: aktuell sind nur die 3 Haupt-Exporter (DATEV/DutyPay/Taxually) im Service-Layer. Verbringung enthält interaktive Wechselkurs-Prompts (CLI-Spezifik), Reconcile + Mixed-VAT sind aktuell CLI-only. Bei FastAPI-Anbindung müssen diese auch service-fähig gemacht werden. ~3–4h.
 
+(W-16-A 2026-05-10: CLI → `cli/`-Package mit 9 Modulen.)
+(W-16-B 2026-05-10: `core/services/` mit DATEV/DutyPay/Taxually-Services + Delta-Varianten. CLI-Commands sind dünne Wrapper.)
 (W-19 wurde durch B-9 abgedeckt — `ArticlePricingRepository` lebt jetzt in `core/repositories.py` mit JTL-Implementierung in `core/db_jtl.py`.)
 
 ## Notizen für Orchestrator
