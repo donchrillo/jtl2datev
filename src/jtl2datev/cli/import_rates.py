@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 
 from jtl2datev.cli import main
-from jtl2datev.core.exchange_rates import DEFAULT_RATES_PATH
+from jtl2datev.core.config import Settings
 
 
 @main.command("import-rates")
@@ -45,8 +45,9 @@ def import_rates_cmd(year: int | None, csv_path: Path | None) -> None:
     else:
         click.echo(f"Lade BMF-CSV für {effective_year} ...")
 
+    rates_path = Settings().rates_path
     try:
-        imported = import_bmf_rates(effective_year, path=DEFAULT_RATES_PATH, content=content)
+        imported = import_bmf_rates(effective_year, path=rates_path, content=content)
     except Exception as exc:
         click.echo(f"Fehler beim Import: {exc}")
         raise SystemExit(1) from exc
@@ -58,4 +59,4 @@ def import_rates_cmd(year: int | None, csv_path: Path | None) -> None:
         click.echo(f"  {period}: {', '.join(sorted(currencies))}")
 
     click.echo(f"\nImport abgeschlossen: {total} Kurse in {len(imported)} Perioden.")
-    click.echo(f"Gespeichert: {DEFAULT_RATES_PATH}")
+    click.echo(f"Gespeichert: {rates_path}")

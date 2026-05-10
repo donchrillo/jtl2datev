@@ -109,7 +109,6 @@ def export_verbringung(req: VerbringungExportRequest) -> VerbringungExportResult
     skus_unmapped = len(unique_skus) - skus_mapped
 
     # XLSX-Export
-    req.out_xlsx.parent.mkdir(parents=True, exist_ok=True)
     rows_written = format_verbringung_xlsx(movements, pricing, req.out_xlsx)
 
     # PDF-Export

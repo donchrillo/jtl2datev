@@ -2,6 +2,41 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint "jtl2datev als Tool im toci-erp-Frontend" (Tag 1 + 2.1 abgeschlossen)
+
+**Konfiguration + Auth + Streaming finalisiert:**
+
+**Core-Config (`core/config.py`):**
+- `rates_path` (ENV `JTL_RATES_PATH`) für Exchange-Rates JSON
+- `secret_key`, `algorithm` (ENV `SECRET_KEY`, `ALGORITHM`) für JWT mit toci-erp geteilt
+- `exchange_rates.py`: `DEFAULT_RATES_PATH` abgelöst durch Settings-Auflösung
+
+**FastAPI-Auth (`api/auth.py` NEU):**
+- `verify_jwt`-Dependency: HS256-Validierung, Bearer-Token, sub-Claim nur
+- Keine Permission-Prüfung — nur Signatur + sub-Validität
+- Integriert in alle 5 API-Routen (`exports`, `reports`)
+
+**API-Struktur (`api/main.py`, `api/routers/`):**
+- Alle Endpoints unter `/api/v1/jtl-datev/...` (konsistent mit toci-erp)
+- Lifespan-Engine, Swagger/OpenAPI im Skeleton
+- Entry-Point `jtl2datev-api`
+
+**Streaming-Response (`api/routers/exports.py`):**
+- `to_*_bytes()` alle Writer: DATEV (`to_extf_buchungsstapel_bytes`), DutyPay (`to_dutypay_csv_bytes`), Taxually (`to_taxually_xlsx_bytes`), Verbringung (`to_verbringung_pdf_bytes`)
+- `StreamingResponse(BytesIO(...))` — kein BackgroundTasks, kein tempfile, framework-agnostisch
+- `api/routers/reports.py`: JSON-Responses für Reconcile + Mixed-VAT-Check
+
+**CLI-Anpassungen:**
+- `cli/import_rates.py`, `cli/export_verbringung.py`: Settings-Auflösung statt hardcoded Path
+- `core/services/verbringung_service.py`: mkdir raus, nur Bytes-Erzeugung
+- Tests: 437 passed, 14 skipped
+
+**Dependencies (`pyproject.toml`):**
+- `python-jose[cryptography]` im `[api]`-Extra (optional)
+- `.env.example`: `SECRET_KEY`, `ALGORITHM`, `JTL_RATES_PATH` ergänzt
+
+---
+
 ## 2026-05-10 — FastAPI-Skeleton angelegt
 
 **Demonstriert die Schichten-Trennung konkret:** HTTP-Routen sind dünne Wrapper über `core/services/`. React-Frontend (geplant) kann jetzt die gleichen Services per HTTP konsumieren wie die CLI lokal.

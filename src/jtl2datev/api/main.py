@@ -41,6 +41,8 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
         logger.info("FastAPI lifespan: engine disposed")
 
 
+_PREFIX = "/api/v1/jtl-datev"
+
 app = FastAPI(
     title="jtl2datev API",
     version=__version__,
@@ -50,15 +52,17 @@ app = FastAPI(
         "Geschäftslogik lebt in core/services/."
     ),
     lifespan=lifespan,
+    docs_url=f"{_PREFIX}/docs",
+    openapi_url=f"{_PREFIX}/openapi.json",
 )
 
-app.include_router(exports.router)
-app.include_router(reports.router)
+app.include_router(exports.router, prefix=_PREFIX, tags=["jtl-datev/exports"])
+app.include_router(reports.router, prefix=_PREFIX, tags=["jtl-datev/reports"])
 
 
-@app.get("/health", tags=["meta"])
+@app.get(f"{_PREFIX}/health", tags=["jtl-datev/meta"])
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": __version__}
+    return {"status": "ok", "service": "jtl2datev"}
 
 
 # ── Exception-Handler: typed Service-Exceptions → HTTP-Responses ─────────────

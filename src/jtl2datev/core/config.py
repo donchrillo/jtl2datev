@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -38,6 +38,10 @@ _DEFAULT_OWN_VAT_IDS: dict[str, str] = {
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Shared with toci-erp — no JTL_ prefix, read from bare ENV vars
+    secret_key: str = Field(default="change-me", validation_alias="SECRET_KEY")
+    algorithm: str = Field(default="HS256", validation_alias="ALGORITHM")
+
     sql_server: str = "localhost"
     sql_port: int = 50000
     sql_database: str = "eazybusiness"
@@ -51,6 +55,7 @@ class Settings(BaseSettings):
     datev_default_debitor: int = 10000000
 
     export_archive_root: Path = Path("exports")
+    rates_path: Path = Field(default=Path("data/exchange_rates.json"), validation_alias="JTL_RATES_PATH")
 
     bware_pricing_strategy: str = "ten_percent"  # "ten_percent" | "flat_10ct"
     bware_flat_price: Decimal = Decimal("0.10")

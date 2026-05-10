@@ -29,7 +29,7 @@ src/jtl2datev/
     _common.py           _parse_month, _resolve_date_range
     export_*.py, reconcile.py, mixed_vat_check.py, import_rates.py
   api/                   FastAPI-Skeleton (optional via [api]-Extra)
-    main.py, dependencies.py
+    main.py, dependencies.py, auth.py
     routers/exports.py   POST /export/{datev,dutypay,taxually}
     routers/reports.py   GET /reconcile, /mixed-vat-check
 docs/

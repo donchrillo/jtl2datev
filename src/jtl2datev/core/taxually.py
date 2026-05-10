@@ -75,18 +75,14 @@ def _aggregate_lines(invoice: RawInvoice) -> tuple[Decimal, Decimal, Decimal, De
     return total_gross, total_net, total_vat, first_rate
 
 
-def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> int:
-    """Write Taxually XLSX from invoices.
-
-    Returns the number of data rows written.
-    """
+def _build_taxually_workbook(invoices: Iterable[RawInvoice]) -> tuple[openpyxl.Workbook, int]:
+    """Build a Taxually workbook from invoices. Returns (workbook, rows_written)."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Your data"
 
     ws.append(list(TAXUALLY_COLUMNS))
 
-    # Determine date column indices (1-based) for number_format
     _date_col_indices = {
         TAXUALLY_COLUMNS.index("Transaction date") + 1,
         TAXUALLY_COLUMNS.index("Invoice date") + 1,
@@ -156,17 +152,38 @@ def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> i
         ws.append(row)
         rows_written += 1
 
-        # Apply date format to the date cell in this row
         current_row = ws.max_row
         for col_idx in _date_col_indices:
             cell = ws.cell(row=current_row, column=col_idx)
             if cell.value is not None:
                 cell.number_format = _DATE_FORMAT
 
+    return wb, rows_written
+
+
+def to_taxually_xlsx_bytes(invoices: Iterable[RawInvoice]) -> tuple[bytes, int]:
+    """Build Taxually XLSX as bytes via BytesIO.
+
+    Returns (payload_bytes, rows_written). Does not touch the filesystem.
+    """
+    import io as _io
+
+    wb, rows_written = _build_taxually_workbook(invoices)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), rows_written
+
+
+def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> int:
+    """Write Taxually XLSX from invoices.
+
+    Returns the number of data rows written.
+    """
+    payload, rows_written = to_taxually_xlsx_bytes(invoices)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(str(output_path) + ".tmp")
     try:
-        wb.save(str(tmp))
+        tmp.write_bytes(payload)
         os.replace(tmp, output_path)
     except Exception:
         try:

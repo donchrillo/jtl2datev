@@ -462,6 +462,51 @@ class DutyPayReport:
     kind_counts: dict[str, int] = field(default_factory=dict)
 
 
+def to_dutypay_csv_bytes(
+    invoices: Iterable[RawInvoice],
+    *,
+    own_vat_ids: dict[str, str],
+) -> tuple[bytes, DutyPayReport]:
+    """Build DutyPay OSS CSV as UTF-8-encoded bytes.
+
+    Returns (payload_bytes, report). Does not touch the filesystem.
+    """
+    import io as _io
+
+    report = DutyPayReport()
+    pos_nr = 0
+
+    buf = _io.StringIO()
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+    writer.writerow(list(DUTYPAY_COLUMNS))
+
+    for invoice in invoices:
+        if not invoice.lines:
+            report.skipped_no_lines += 1
+            continue
+
+        kind = determine_kind_of_business(invoice)
+        report.kind_counts[str(kind)] = report.kind_counts.get(str(kind), 0) + 1
+
+        pos_nr += 1
+        row = _build_invoice_row(
+            pos_nr=pos_nr,
+            invoice=invoice,
+            kind=kind,
+            own_vat_ids=own_vat_ids,
+        )
+        writer.writerow(row)
+        report.rows_written += 1
+        report.invoices_processed += 1
+
+    logger.info(
+        "DutyPay export complete: %d rows written from %d invoices",
+        report.rows_written,
+        report.invoices_processed,
+    )
+    return buf.getvalue().encode("utf-8"), report
+
+
 def write_dutypay_csv(
     invoices: Iterable[RawInvoice],
     *,
@@ -473,37 +518,8 @@ def write_dutypay_csv(
     UTF-8, semicolon-delimited, German decimal comma, DD.MM.YYYY dates.
     One row per invoice document (amounts aggregated across all line positions).
     """
-    report = DutyPayReport()
-    pos_nr = 0
-
-    with out_path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.writer(fh, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
-        writer.writerow(list(DUTYPAY_COLUMNS))
-
-        for invoice in invoices:
-            if not invoice.lines:
-                report.skipped_no_lines += 1
-                continue
-
-            kind = determine_kind_of_business(invoice)
-            report.kind_counts[str(kind)] = report.kind_counts.get(str(kind), 0) + 1
-
-            pos_nr += 1
-            row = _build_invoice_row(
-                pos_nr=pos_nr,
-                invoice=invoice,
-                kind=kind,
-                own_vat_ids=own_vat_ids,
-            )
-            writer.writerow(row)
-            report.rows_written += 1
-            report.invoices_processed += 1
-
-    logger.info(
-        "DutyPay export complete: %d rows written from %d invoices",
-        report.rows_written,
-        report.invoices_processed,
-    )
+    payload, report = to_dutypay_csv_bytes(invoices, own_vat_ids=own_vat_ids)
+    out_path.write_bytes(payload)
     return report
 
 

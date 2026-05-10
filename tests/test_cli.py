@@ -511,11 +511,12 @@ def test_export_verbringung_interactive_prompt_saves_rate(
         ),
     }
 
+    mock_settings = MagicMock()
+    mock_settings.rates_path = rates_path
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value={}), \
-         patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.export_verbringung.DEFAULT_RATES_PATH", rates_path):
+         patch("jtl2datev.cli.export_verbringung.Settings", return_value=mock_settings):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -600,15 +601,16 @@ def test_import_rates_help() -> None:
 
 
 def test_import_rates_with_local_csv(tmp_path: Path) -> None:
-    """import-rates --csv <local> should import rates into DEFAULT_RATES_PATH."""
+    """import-rates --csv <local> should import rates into settings.rates_path."""
     from jtl2datev.core.exchange_rates import get_rate
 
     rates_path = tmp_path / "rates.json"
     csv_file = tmp_path / "bmf.csv"
     csv_file.write_bytes(_SAMPLE_BMF_CSV)
 
-    with patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.import_rates.DEFAULT_RATES_PATH", rates_path):
+    mock_settings = MagicMock()
+    mock_settings.rates_path = rates_path
+    with patch("jtl2datev.cli.import_rates.Settings", return_value=mock_settings):
         result = CliRunner().invoke(
             main,
             ["import-rates", "--year", "2026", "--csv", str(csv_file)],
@@ -626,8 +628,9 @@ def test_import_rates_summary_line(tmp_path: Path) -> None:
     csv_file = tmp_path / "bmf.csv"
     csv_file.write_bytes(_SAMPLE_BMF_CSV)
 
-    with patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.import_rates.DEFAULT_RATES_PATH", rates_path):
+    mock_settings = MagicMock()
+    mock_settings.rates_path = rates_path
+    with patch("jtl2datev.cli.import_rates.Settings", return_value=mock_settings):
         result = CliRunner().invoke(
             main,
             ["import-rates", "--csv", str(csv_file)],

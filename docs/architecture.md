@@ -20,7 +20,7 @@
 
 | Modul | Status | Verantwortung |
 |---|---|---|
-| `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids |
+| `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids, rates_path, secret_key, algorithm (JWT-Auth mit toci-erp geteilt) |
 | `core/models.py` | ✓ | RawInvoice, RawInvoiceLine (synthetisch mit Header-Aggregaten), PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
 | `core/repositories.py` | ✓ | Abstrakte Interfaces: `InvoiceRepository` (`fetch_invoices`, `find_mixed_vat_belege`), `ArticlePricingRepository` (`lookup_ek_prices`). |
 | `core/services/` | ✓ | Application-Layer: typed Request/Result/Exceptions. `datev_service`, `dutypay_service`, `taxually_service` (jew. + Delta), `verbringung_service` (mit `MissingExchangeRatesError`), `reconcile_service`, `mixed_vat_service`. Pure: kein print, kein SystemExit, kein Engine-Lifecycle, kein Archive. |
@@ -41,7 +41,8 @@
 | `core/reference_data.py` | ✓ | Stammdaten-Zentralisierung: EU_MEMBER_STATES, COUNTRY_CURRENCY, PLATFORM_COUNTRY, HARD_MIN_INVOICE_DATE. Single Source für länder-/währungs-/plattformübergreifende Constants. |
 | `core/archive.py` | ✓ | Generischer Archiv-Helfer für DATEV/DutyPay/Taxually/Verbringungen (Auto-Verzeichniserstellung, Timestamp-Naming). |
 | `cli/` | ✓ | Click-Sub-Commands als Package (9 Module). `__init__.py` (main+version), `_common.py` (Date-Parser), `export_datev.py`, `export_dutypay.py`, `export_taxually.py`, `export_verbringung.py`, `reconcile.py`, `mixed_vat_check.py`, `import_rates.py`. Jeder Command: Argument-Parsing → Service-Aufruf → Echo-Formatierung → Exception→SystemExit. |
-| `api/` | ✓ | FastAPI-Skeleton (optional via `pip install jtl2datev[api]`). Lifespan-Engine, 5 Endpoints (`POST /export/{datev,dutypay,taxually}` mit FileResponse, `GET /reconcile|/mixed-vat-check` mit JSON), typed Exception-Handlers (NoBaseline→404, MissingExchangeRates→400). Entry-Point `jtl2datev-api`. |
+| `api/` | ✓ | FastAPI-Skeleton (optional via `pip install jtl2datev[api]`). Alle Endpoints unter `/api/v1/jtl-datev/...`. Lifespan-Engine, 5 Endpoints (`POST /export/{datev,dutypay,taxually}` mit StreamingResponse(BytesIO), `GET /reconcile\|/mixed-vat-check` mit JSON), typed Exception-Handlers (NoBaseline→404, MissingExchangeRates→400). Entry-Point `jtl2datev-api`. |
+| `api/auth.py` | ✓ | JWT-Validierung (HS256): `verify_jwt`-Dependency mit Bearer-Token + sub-Claim. Secret + Algorithm geteilt mit toci-erp (`SECRET_KEY`, `ALGORITHM` aus Config). Keine Permission-Logik. |
 
 Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 
@@ -182,9 +183,10 @@ Die hier aufgebaute Logik wandert 1:1 ins künftige ERP-System. Heute ist `jtl2d
 |--------------------------------------|----------------------------------|-----------------------------------------------|
 | Domain (framework-agnostisch)        | `src/jtl2datev/core/*.py`        | `backend/core/modules/jtl2datev/` (oder analog) |
 | Application (Service-Layer)          | `core/services/*.py` (typed Request/Result) | bleibt 1:1 — wird direkt von FastAPI-Routen aufgerufen |
-| DB-Adapter (swappable)               | `core/repositories.py` (ABC) → `core/db_jtl.py` (MSSQL) | Neue Impl. `core/db_toci.py` gegen eigenes ERP-Schema, Interface bleibt |
+| DB-Adapter (swappable)               | `core/repositories.py` (ABC) → `core/db_jtl.py` (MSSQL) | neue Impl. `core/db_toci.py` gegen eigenes ERP-Schema, Interface bleibt |
 | CLI-Wrapper                          | `src/jtl2datev/cli/` (Click-Package, 9 Module) | bleibt für Admin-Tasks oder fällt weg |
-| HTTP-API                             | `src/jtl2datev/api/` (FastAPI-Skeleton, 5 Endpoints) | erweitert um Auth, CORS, Verbringung, Delta-Endpoints |
+| HTTP-API                             | `src/jtl2datev/api/` (FastAPI, `/api/v1/jtl-datev/...`, 5 Endpoints) | erweitert um CORS, Verbringungs-Endpoint, Delta-Endpoints |
+| JWT-Auth                             | `api/auth.py` (HS256, shared mit toci-erp) | bleibt — `verify_jwt`-Dependency vor allen Routes |
 | Konfiguration                        | `core/config.py` (Pydantic Settings) | bleibt, via FastAPI-Dependency-Injection (`get_settings`) |
 | Filesystem-Archive                   | `core/archive.py` (lokales FS)   | bei Bedarf S3/Object-Storage-Adapter, isolierte Schicht |
 

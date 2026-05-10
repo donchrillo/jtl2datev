@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from jtl2datev.api.auth import verify_jwt
 from jtl2datev.api.dependencies import (
     InvoiceRepoDep,
     PeriodDep,
@@ -26,7 +27,7 @@ from jtl2datev.core.services.reconcile_service import (
     reconcile,
 )
 
-router = APIRouter(tags=["reports"])
+router = APIRouter(dependencies=[Depends(verify_jwt)])
 
 
 class ReconcileSummary(BaseModel):

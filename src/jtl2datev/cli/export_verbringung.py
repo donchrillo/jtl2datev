@@ -12,7 +12,8 @@ import click
 
 from jtl2datev.cli import main
 from jtl2datev.cli._common import _parse_month
-from jtl2datev.core.exchange_rates import DEFAULT_RATES_PATH, get_rates_for_period
+from jtl2datev.core.config import Settings
+from jtl2datev.core.exchange_rates import get_rates_for_period
 
 
 @main.command("export-verbringung")
@@ -56,7 +57,6 @@ def export_verbringung_cmd(
     """
     from decimal import Decimal, InvalidOperation
 
-    from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import JtlArticlePricingRepository, managed_engine
     from jtl2datev.core.exchange_rates import set_rate
     from jtl2datev.core.services.verbringung_service import (
@@ -75,13 +75,15 @@ def export_verbringung_cmd(
     effective_missing_ek = out_missing_ek or (archive_base / f"missing_ek_{ts}.csv")
     effective_bware_summary = out_bware_summary or (archive_base / f"bware_summary_{ts}.csv")
 
+    settings = Settings()
+    rates_path = settings.rates_path
     try:
         # 1) Movements parsen, um benötigte Währungen zu bestimmen
         movements = parse_amazon_report(report_path)
         required = required_currencies_for(movements)
 
         # 2) Wechselkurse laden + ggf. via Prompt nachpflegen
-        exchange_rates: dict[str, Decimal] = get_rates_for_period(month_str, path=DEFAULT_RATES_PATH)
+        exchange_rates: dict[str, Decimal] = get_rates_for_period(month_str, path=rates_path)
         missing_currencies = sorted(required - set(exchange_rates.keys()))
         if missing_currencies:
             bmf_url = (
@@ -114,12 +116,11 @@ def export_verbringung_cmd(
                 except InvalidOperation:
                     click.echo(f"Ungültige Eingabe: {raw!r}")
                     raise SystemExit(1)
-                set_rate(month_str, currency, value, source="manual", path=DEFAULT_RATES_PATH)
+                set_rate(month_str, currency, value, source="manual", path=rates_path)
                 exchange_rates[currency] = value
                 click.echo(f"  Kurs gespeichert: 1 EUR = {value} {currency} (manual)")
 
         # 3) Service mit kompletten Kursen aufrufen
-        settings = Settings()
         with managed_engine(settings) as engine:
             result = export_verbringung(
                 VerbringungExportRequest(

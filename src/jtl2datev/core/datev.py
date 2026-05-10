@@ -419,6 +419,185 @@ def _build_row(
     return br
 
 
+def to_extf_buchungsstapel_bytes(
+    invoices: Iterable[RawInvoice],
+    *,
+    settings: Settings,
+    date_from: date,
+    date_to: date,
+    decisions_by_invoice: Callable[[RawInvoice], list[LineDecision]],
+    compare_map: dict[str, set[tuple[str, str]]] | None = None,
+    audit: bool = False,
+    keep_zero_amount: bool = False,
+) -> tuple[bytes, ExportReport]:
+    """Build EXTF Buchungsstapel CSV as cp1252-encoded bytes.
+
+    Returns (payload_bytes, report). Does not touch the filesystem.
+    """
+    import io as _io
+
+    report = ExportReport()
+    timestamp = datetime.now(tz=timezone.utc)
+
+    buf = _io.StringIO()
+    buf.write(_make_extf_header(settings=settings, date_from=date_from, date_to=date_to, timestamp=timestamp))
+    buf.write("\r\n")
+    buf.write(_COLUMN_HEADER)
+    buf.write("\r\n")
+
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+
+    for invoice in invoices:
+        # Probebuchungen-Filter: Belege mit Brutto-Summe = 0,00 €
+        # (z.B. SR202602155/156). Filter sitzt nur im DATEV-Pfad —
+        # DutyPay/Taxually behalten die Belege für Reconcile-Vollständigkeit.
+        if not keep_zero_amount:
+            total_gross = sum(
+                (line.gross for line in invoice.lines),
+                Decimal("0"),
+            )
+            if total_gross == 0:
+                report.skipped_zero_amount += 1
+                logger.debug(
+                    "DATEV export: skipping zero-amount beleg %s",
+                    invoice.invoice_no,
+                )
+                continue
+
+        line_decisions = decisions_by_invoice(invoice)
+
+        debitor = map_to_debitor_account(
+            invoice,
+            payment_method=invoice.payment_method,
+            default=settings.datev_default_debitor,
+        )
+        customer_name = _customer_name(invoice)
+        buchungstext = _sanitize_buchungstext(
+            f"{invoice.invoice_no} {customer_name}".strip()
+        )
+
+        # Detect error / unknown belege — these still get a row but with
+        # an empty Gegenkonto and a marker in Belegfeld 2 so the operator
+        # can filter and correct manually instead of silently losing them.
+        has_error = _has_error_mismatch(invoice, line_decisions)
+        has_unknown = any(
+            ld.decision.treatment == TaxTreatment.UNKNOWN for ld in line_decisions
+        )
+        problem_marker = ""
+        if has_error:
+            problem_marker = "ERROR"
+            report.skipped_error += 1
+            report.skipped_details.append(
+                SkippedBeleg(invoice.invoice_no, "error-level mismatch", "error")
+            )
+            logger.warning("DATEV export: %s flagged ERROR", invoice.invoice_no)
+        elif has_unknown:
+            problem_marker = "UNKNOWN"
+            report.skipped_unknown += 1
+            report.skipped_details.append(
+                SkippedBeleg(invoice.invoice_no, "UNKNOWN treatment", "unknown")
+            )
+            logger.warning("DATEV export: %s flagged UNKNOWN", invoice.invoice_no)
+
+        if problem_marker:
+            # Single placeholder row with empty Gegenkonto. Sum gross over
+            # all lines so the operator at least sees the order total.
+            gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
+            first_ld = line_decisions[0] if line_decisions else None
+            placeholder = DatevAccount(account="", bu_key="", audit_tag=problem_marker)
+            br = _build_row(
+                invoice=invoice,
+                gross_sum=gross_sum,
+                account=placeholder,
+                debitor=debitor,
+                decision_for_eu_cols=first_ld,
+                settings=settings,
+                buchungstext=buchungstext,
+                customer_name=customer_name,
+                audit=audit,
+            )
+            br.belegfeld2 = problem_marker
+            writer.writerow(br.to_csv_row())
+            report.bookings_written += 1
+            continue
+
+        # Resolve account + debitor for each line
+        line_accounts: list[tuple[LineDecision, DatevAccount]] = []
+        for ld in line_decisions:
+            acc = map_to_datev_account(invoice, ld.line, ld.decision)
+            if acc.account == "0000000":
+                # Unmapped — treat as UNKNOWN going forward so we still
+                # write a placeholder row instead of dropping the booking.
+                logger.warning(
+                    "DATEV export: no account for %s line %d (%s) — flagging UNKNOWN",
+                    invoice.invoice_no, ld.line.line_no, acc.note,
+                )
+                line_accounts = []
+                break
+            line_accounts.append((ld, acc))
+
+        if not line_accounts:
+            gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
+            placeholder = DatevAccount(account="", bu_key="", audit_tag="UNKNOWN")
+            br = _build_row(
+                invoice=invoice,
+                gross_sum=gross_sum,
+                account=placeholder,
+                debitor=debitor,
+                decision_for_eu_cols=line_decisions[0] if line_decisions else None,
+                settings=settings,
+                buchungstext=buchungstext,
+                customer_name=customer_name,
+                audit=audit,
+            )
+            br.belegfeld2 = "UNKNOWN"
+            report.skipped_unknown += 1
+            writer.writerow(br.to_csv_row())
+            report.bookings_written += 1
+            continue
+
+        # Group lines by (account, bu_key) — aggregate gross + keep audit_tag
+        groups: dict[tuple[str, str], tuple[Decimal, LineDecision, str]] = {}
+        for ld, acc in line_accounts:
+            key = (acc.account, acc.bu_key)
+            if key not in groups:
+                groups[key] = (Decimal("0"), ld, acc.audit_tag)
+            prev_sum, first_ld, tag = groups[key]
+            groups[key] = (prev_sum + ld.line.gross, first_ld, tag)
+
+        for (acct_no, bu_key), (gross_sum, first_ld, tag) in groups.items():
+            datev_acct = DatevAccount(account=acct_no, bu_key=bu_key, audit_tag=tag)
+            br = _build_row(
+                invoice=invoice,
+                gross_sum=gross_sum,
+                account=datev_acct,
+                debitor=debitor,
+                decision_for_eu_cols=first_ld,
+                settings=settings,
+                buchungstext=buchungstext,
+                customer_name=customer_name,
+                audit=audit,
+            )
+            if compare_map is not None:
+                ref = compare_map.get(invoice.invoice_no)
+                if ref is not None and (acct_no, bu_key) not in ref:
+                    # Don't overwrite ERROR/UNKNOWN markers with X
+                    if not br.belegfeld2:
+                        br.belegfeld2 = "X"
+                        report.diff_marked += 1
+            writer.writerow(br.to_csv_row())
+            report.bookings_written += 1
+
+    logger.info(
+        "DATEV export complete: %d bookings written, %d error-skipped, %d unknown-skipped, %d zero-amount-skipped",
+        report.bookings_written,
+        report.skipped_error,
+        report.skipped_unknown,
+        report.skipped_zero_amount,
+    )
+    return buf.getvalue().encode("cp1252", errors="replace"), report
+
+
 def write_extf_buchungsstapel(
     invoices: Iterable[RawInvoice],
     *,
@@ -432,163 +611,19 @@ def write_extf_buchungsstapel(
     keep_zero_amount: bool = False,
 ) -> ExportReport:
     """Write EXTF Buchungsstapel CSV from invoices iterator."""
-    report = ExportReport()
-    timestamp = datetime.now(tz=timezone.utc)
-
+    payload, report = to_extf_buchungsstapel_bytes(
+        invoices,
+        settings=settings,
+        date_from=date_from,
+        date_to=date_to,
+        decisions_by_invoice=decisions_by_invoice,
+        compare_map=compare_map,
+        audit=audit,
+        keep_zero_amount=keep_zero_amount,
+    )
     tmp = Path(str(out_path) + ".tmp")
     try:
-        with tmp.open("w", encoding="cp1252", newline="") as fh:
-            # Row 1: EXTF header
-            fh.write(_make_extf_header(settings=settings, date_from=date_from, date_to=date_to, timestamp=timestamp))
-            fh.write("\r\n")
-
-            # Row 2: column header
-            fh.write(_COLUMN_HEADER)
-            fh.write("\r\n")
-
-            writer = csv.writer(fh, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
-
-            for invoice in invoices:
-                # Probebuchungen-Filter: Belege mit Brutto-Summe = 0,00 €
-                # (z.B. SR202602155/156). Filter sitzt nur im DATEV-Pfad —
-                # DutyPay/Taxually behalten die Belege für Reconcile-Vollständigkeit.
-                if not keep_zero_amount:
-                    total_gross = sum(
-                        (line.gross for line in invoice.lines),
-                        Decimal("0"),
-                    )
-                    if total_gross == 0:
-                        report.skipped_zero_amount += 1
-                        logger.debug(
-                            "DATEV export: skipping zero-amount beleg %s",
-                            invoice.invoice_no,
-                        )
-                        continue
-
-                line_decisions = decisions_by_invoice(invoice)
-
-                debitor = map_to_debitor_account(
-                    invoice,
-                    payment_method=invoice.payment_method,
-                    default=settings.datev_default_debitor,
-                )
-                customer_name = _customer_name(invoice)
-                buchungstext = _sanitize_buchungstext(
-                    f"{invoice.invoice_no} {customer_name}".strip()
-                )
-
-                # Detect error / unknown belege — these still get a row but with
-                # an empty Gegenkonto and a marker in Belegfeld 2 so the operator
-                # can filter and correct manually instead of silently losing them.
-                has_error = _has_error_mismatch(invoice, line_decisions)
-                has_unknown = any(
-                    ld.decision.treatment == TaxTreatment.UNKNOWN for ld in line_decisions
-                )
-                problem_marker = ""
-                if has_error:
-                    problem_marker = "ERROR"
-                    report.skipped_error += 1
-                    report.skipped_details.append(
-                        SkippedBeleg(invoice.invoice_no, "error-level mismatch", "error")
-                    )
-                    logger.warning("DATEV export: %s flagged ERROR", invoice.invoice_no)
-                elif has_unknown:
-                    problem_marker = "UNKNOWN"
-                    report.skipped_unknown += 1
-                    report.skipped_details.append(
-                        SkippedBeleg(invoice.invoice_no, "UNKNOWN treatment", "unknown")
-                    )
-                    logger.warning("DATEV export: %s flagged UNKNOWN", invoice.invoice_no)
-
-                if problem_marker:
-                    # Single placeholder row with empty Gegenkonto. Sum gross over
-                    # all lines so the operator at least sees the order total.
-                    gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
-                    first_ld = line_decisions[0] if line_decisions else None
-                    placeholder = DatevAccount(account="", bu_key="", audit_tag=problem_marker)
-                    br = _build_row(
-                        invoice=invoice,
-                        gross_sum=gross_sum,
-                        account=placeholder,
-                        debitor=debitor,
-                        decision_for_eu_cols=first_ld,
-                        settings=settings,
-                        buchungstext=buchungstext,
-                        customer_name=customer_name,
-                        audit=audit,
-                    )
-                    br.belegfeld2 = problem_marker
-                    writer.writerow(br.to_csv_row())
-                    report.bookings_written += 1
-                    continue
-
-                # Resolve account + debitor for each line
-                line_accounts: list[tuple[LineDecision, DatevAccount]] = []
-                for ld in line_decisions:
-                    acc = map_to_datev_account(invoice, ld.line, ld.decision)
-                    if acc.account == "0000000":
-                        # Unmapped — treat as UNKNOWN going forward so we still
-                        # write a placeholder row instead of dropping the booking.
-                        logger.warning(
-                            "DATEV export: no account for %s line %d (%s) — flagging UNKNOWN",
-                            invoice.invoice_no, ld.line.line_no, acc.note,
-                        )
-                        line_accounts = []
-                        break
-                    line_accounts.append((ld, acc))
-
-                if not line_accounts:
-                    gross_sum = sum((ld.line.gross for ld in line_decisions), Decimal("0"))
-                    placeholder = DatevAccount(account="", bu_key="", audit_tag="UNKNOWN")
-                    br = _build_row(
-                        invoice=invoice,
-                        gross_sum=gross_sum,
-                        account=placeholder,
-                        debitor=debitor,
-                        decision_for_eu_cols=line_decisions[0] if line_decisions else None,
-                        settings=settings,
-                        buchungstext=buchungstext,
-                        customer_name=customer_name,
-                        audit=audit,
-                    )
-                    br.belegfeld2 = "UNKNOWN"
-                    report.skipped_unknown += 1
-                    writer.writerow(br.to_csv_row())
-                    report.bookings_written += 1
-                    continue
-
-                # Group lines by (account, bu_key) — aggregate gross + keep audit_tag
-                groups: dict[tuple[str, str], tuple[Decimal, LineDecision, str]] = {}
-                for ld, acc in line_accounts:
-                    key = (acc.account, acc.bu_key)
-                    if key not in groups:
-                        groups[key] = (Decimal("0"), ld, acc.audit_tag)
-                    prev_sum, first_ld, tag = groups[key]
-                    groups[key] = (prev_sum + ld.line.gross, first_ld, tag)
-
-                for (acct_no, bu_key), (gross_sum, first_ld, tag) in groups.items():
-                    datev_acct = DatevAccount(account=acct_no, bu_key=bu_key, audit_tag=tag)
-                    br = _build_row(
-                        invoice=invoice,
-                        gross_sum=gross_sum,
-                        account=datev_acct,
-                        debitor=debitor,
-                        decision_for_eu_cols=first_ld,
-                        settings=settings,
-                        buchungstext=buchungstext,
-                        customer_name=customer_name,
-                        audit=audit,
-                    )
-                    if compare_map is not None:
-                        ref = compare_map.get(invoice.invoice_no)
-                        if ref is not None and (acct_no, bu_key) not in ref:
-                            # Don't overwrite ERROR/UNKNOWN markers with X
-                            if not br.belegfeld2:
-                                br.belegfeld2 = "X"
-                                report.diff_marked += 1
-                    writer.writerow(br.to_csv_row())
-                    report.bookings_written += 1
-
+        tmp.write_bytes(payload)
         os.replace(tmp, out_path)
     except Exception:
         try:
@@ -596,14 +631,6 @@ def write_extf_buchungsstapel(
         except FileNotFoundError:
             pass
         raise
-
-    logger.info(
-        "DATEV export complete: %d bookings written, %d error-skipped, %d unknown-skipped, %d zero-amount-skipped",
-        report.bookings_written,
-        report.skipped_error,
-        report.skipped_unknown,
-        report.skipped_zero_amount,
-    )
     return report
 
 

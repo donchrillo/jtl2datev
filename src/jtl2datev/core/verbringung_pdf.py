@@ -154,8 +154,8 @@ def _build_pdf(
     arrival_country: str,
     own_vat_ids: dict[str, str],
     exchange_rates: dict[str, Decimal] | None,
-    output_path: Path,
-) -> None:
+    output_path: Path | None = None,
+) -> bytes | None:
     period_end = _period_end_date(period)
 
     dep_name_de = COUNTRY_NAMES_DE.get(departure_country, departure_country)
@@ -360,11 +360,14 @@ def _build_pdf(
 
     story.append(tbl)
 
-    # Build PDF
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        target: str | io.BytesIO = str(output_path)
+    else:
+        target = io.BytesIO()
 
     doc = BaseDocTemplate(
-        str(output_path),
+        target,  # type: ignore[arg-type]
         pagesize=A4,
         leftMargin=_MARGIN,
         rightMargin=_MARGIN,
@@ -377,6 +380,38 @@ def _build_pdf(
     doc.addPageTemplates([page_template])
 
     doc.multiBuild(story, canvasmaker=_NumberedCanvas)
+
+    if isinstance(target, io.BytesIO):
+        return target.getvalue()
+    return None
+
+
+def to_verbringung_pdf_bytes(
+    movements: list[MovementRow],
+    pricing: dict[str, PricingResult],
+    period: str,
+    pfr_number: str,
+    departure_country: str,
+    arrival_country: str,
+    own_vat_ids: dict[str, str] | None = None,
+    exchange_rates: dict[str, Decimal] | None = None,
+) -> bytes:
+    """Build a single pro-forma invoice PDF as bytes. Does not touch the filesystem."""
+    if own_vat_ids is None:
+        own_vat_ids = OWN_VAT_IDS_VERBRINGUNG
+    result = _build_pdf(
+        movements=movements,
+        pricing=pricing,
+        period=period,
+        pfr_number=pfr_number,
+        departure_country=departure_country,
+        arrival_country=arrival_country,
+        own_vat_ids=own_vat_ids,
+        exchange_rates=exchange_rates,
+        output_path=None,
+    )
+    assert result is not None
+    return result
 
 
 def generate_proforma_pdfs(
