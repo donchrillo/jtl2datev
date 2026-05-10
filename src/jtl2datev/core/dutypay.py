@@ -284,7 +284,7 @@ def _vat_rate_str(rate: Decimal | None) -> str:
 def _safe(val: str | None) -> str:
     if not val:
         return ""
-    return val.replace(";", " ").strip()
+    return val.replace(";", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ").strip()
 
 
 def _build_invoice_row(
@@ -315,9 +315,21 @@ def _build_invoice_row(
     mz_gross = -total_gross if is_refund_kind else total_gross
     mz_net = -total_net if is_refund_kind else total_net
 
-    # VatZone: the country where VAT applies. For SALE/REFUND that is the
-    # target (destination) country. For B2B/EXPORT it is the source (warehouse).
-    vat_zone = target_zone if kind in (KindOfBusiness.SALE, KindOfBusiness.REFUND) else source_zone
+    # VatZone: the country where VAT applies.
+    # - SALE/REFUND: target (destination) country.
+    # - EXPORT to GB via Marketplace-Facilitator (Amazon/eBay collect & remit
+    #   UK VAT directly): VatZone = GB, because the VAT is settled in the UK.
+    # - All other B2B/EXPORT: source (warehouse).
+    if kind in (KindOfBusiness.SALE, KindOfBusiness.REFUND):
+        vat_zone = target_zone
+    elif (
+        kind in (KindOfBusiness.EXPORT, KindOfBusiness.EXPORT_REFUND)
+        and target_zone == "GB"
+        and invoice.jtl_external_order_no  # Marketplace-Facilitator-Indikator
+    ):
+        vat_zone = "GB"
+    else:
+        vat_zone = source_zone
 
     # VATRate: only for B2C (SALE/REFUND). Empty for reverse-charge / export.
     vat_rate_for_zone: Decimal | None = STANDARD_VAT_RATE.get(vat_zone) if kind in (

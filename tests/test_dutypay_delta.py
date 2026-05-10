@@ -46,12 +46,12 @@ class TestArchiveExport:
     def test_file_lands_at_expected_path(self, tmp_path: Path) -> None:
         src = tmp_path / "source.csv"
         src.write_text("data", encoding="utf-8")
-        now = datetime(2026, 2, 15, 10, 30, 5)
+        now = datetime(2026, 2, 15, 10, 30, 5, 123456)
 
         dest = archive_export(src, archive_root=tmp_path / "arch", kind="dutypay",
                               period="2026-02", now=now)
 
-        assert dest == tmp_path / "arch" / "dutypay" / "2026-02" / "2026-02-15_10-30-05.csv"
+        assert dest == tmp_path / "arch" / "dutypay" / "2026-02" / "2026-02-15_10-30-05-123456.csv"
         assert dest.exists()
         assert dest.read_text(encoding="utf-8") == "data"
 
@@ -86,12 +86,12 @@ class TestArchiveDelta:
     def test_delta_lands_in_deltas_subdir(self, tmp_path: Path) -> None:
         src = tmp_path / "delta.csv"
         src.write_text("delta", encoding="utf-8")
-        now = datetime(2026, 3, 10, 9, 0, 0)
+        now = datetime(2026, 3, 10, 9, 0, 0, 0)
 
         dest = archive_delta(src, archive_root=tmp_path / "arch", kind="dutypay",
                              period="2026-02", now=now)
 
-        assert dest == tmp_path / "arch" / "dutypay" / "2026-02" / "deltas" / "2026-03-10_09-00-00.csv"
+        assert dest == tmp_path / "arch" / "dutypay" / "2026-02" / "deltas" / "2026-03-10_09-00-00-000000.csv"
         assert dest.exists()
 
 

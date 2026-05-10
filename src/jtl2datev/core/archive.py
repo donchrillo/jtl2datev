@@ -35,10 +35,14 @@ def archive_export(
     Returns:
         The path the file was copied to.
     """
-    ts = (now or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S")
+    ts = (now or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S-%f")
     dest_dir = archive_root / kind / period
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{ts}.csv"
+    suffix = 2
+    while dest.exists():
+        dest = dest_dir / f"{ts}_{suffix}.csv"
+        suffix += 1
     shutil.copy2(source, dest)
     logger.info("Archived %s → %s", source, dest)
     return dest
@@ -69,10 +73,14 @@ def archive_delta(
     now: datetime | None = None,
 ) -> Path:
     """Copy *source* into the ``deltas/`` sub-directory; return destination."""
-    ts = (now or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S")
+    ts = (now or datetime.now()).strftime("%Y-%m-%d_%H-%M-%S-%f")
     dest_dir = archive_root / kind / period / "deltas"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{ts}.csv"
+    suffix = 2
+    while dest.exists():
+        dest = dest_dir / f"{ts}_{suffix}.csv"
+        suffix += 1
     shutil.copy2(source, dest)
     logger.info("Archived delta %s → %s", source, dest)
     return dest

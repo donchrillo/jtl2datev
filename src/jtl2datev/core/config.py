@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 _DEFAULT_OWN_VAT_COUNTRIES: frozenset[str] = frozenset({"DE", "FR", "IT", "ES", "PL", "CZ", "GB"})
 
@@ -79,12 +80,17 @@ class Settings(BaseSettings):
         return _DEFAULT_OWN_VAT_IDS
 
     @property
-    def sqlalchemy_url(self) -> str:
-        pw = self.sql_password.get_secret_value()
-        return (
-            f"mssql+pyodbc://{self.sql_username}:{pw}"
-            f"@{self.sql_server}:{self.sql_port}/{self.sql_database}"
-            "?driver=ODBC+Driver+18+for+SQL+Server"
-            "&TrustServerCertificate=yes"
-            "&Encrypt=yes"
+    def sqlalchemy_url(self) -> URL:
+        return URL.create(
+            "mssql+pyodbc",
+            username=self.sql_username,
+            password=self.sql_password.get_secret_value(),
+            host=self.sql_server,
+            port=self.sql_port,
+            database=self.sql_database,
+            query={
+                "driver": "ODBC Driver 18 for SQL Server",
+                "TrustServerCertificate": "yes",
+                "Encrypt": "yes",
+            },
         )

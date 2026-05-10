@@ -2,7 +2,7 @@
 
 ## Status
 
-**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08).**
+**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) umgesetzt (2026-05-10).**
 
 **Verbringungen-SKU-Mapping:** Q1-2026 100 % aufgelöst (Tier 5 B-Ware + Tier 6 ASIN-Lookup, 0 unresolved).
 
@@ -19,7 +19,7 @@ jtl2datev export-verbringung --report ... --month YYYY-MM  # Amazon-FBA-Transfer
 jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 ```
 
-**Tests:** 418 passed, 3 skipped. ruff clean.
+**Tests:** 407 passed, 14 skipped. ruff clean.
 
 ## Offene Punkte
 

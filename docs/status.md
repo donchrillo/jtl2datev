@@ -2,6 +2,24 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint A (IO-Sicherheit) umgesetzt
+
+**Fünf kritische Punkte aus Robustness-Review (CONSOLIDATED.md Zeilen 82-92) implementiert:**
+
+**B-2** `core/archive.py`: Microsecond-Timestamps (`%Y-%m-%d_%H-%M-%S-%f`) + Collision-Suffix `_2`/`_3` in `archive_export()` und `archive_delta()` verhindern Race-Conditions bei Parallel-Runs.
+
+**B-3** `core/dutypay.py:_safe()`: strippt zusätzlich `\n`, `\r`, `\t` (vorher nur `;`) → DutyPay-XLSX-Integrität gegen Zeilenumbruch-Injection.
+
+**B-1** `core/datev.py:write_extf_buchungsstapel()`: atomic write via `<path>.tmp` + `os.replace()`, tmp-Datei bei Exception aufgeräumt. Analog in `core/taxually.py` (openpyxl-`wb.save()`) und `core/verbringung_taxually.py` umgestellt → kein korrupter Export bei Strg+C.
+
+**W-9** `core/db_jtl.py:make_engine()`: `pool_pre_ping=True` (stale-connection-detection), `pool_recycle=1800` (30-min-Recycling), `connect_args={"timeout": 10}` (ODBC-Connect-Timeout) → verhindert 15s-Hangs, erkennt DB-Ausfälle schneller.
+
+**B-4** `core/config.py:sqlalchemy_url()`: gibt jetzt `sqlalchemy.engine.URL`-Objekt via `URL.create()` zurück (statt String-Konkatenation) → Passwort nie mehr lesbar in Stack-Traces, automatische Maskierung in Error-Messages.
+
+**Tests:** 407 passed, 14 skipped. Keine Verhaltensänderungen, nur Robustness-Härtung für Q2-Meldung.
+
+---
+
 ## 2026-05-08 — Tier 5+6: B-Ware-Behandlung + ASIN-Lookup
 
 **Q1-2026 Verbringungs-SKU-Coverage komplett aufgelöst (148 → 0 unresolved):**

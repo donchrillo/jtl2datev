@@ -6,6 +6,7 @@ can be uploaded to Taxually alongside normal sales data.
 from __future__ import annotations
 
 import logging
+import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -116,7 +117,16 @@ def format_verbringung_xlsx(
             ws.cell(row=ws.max_row, column=date_col_idx).number_format = _DATE_FORMAT
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(str(output_path))
+    tmp = Path(str(output_path) + ".tmp")
+    try:
+        wb.save(str(tmp))
+        os.replace(tmp, output_path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
     if missing_ek:
         logger.warning(

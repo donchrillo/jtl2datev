@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +14,7 @@ from typing import Iterable
 import openpyxl
 
 from jtl2datev.core.models import RawInvoice
+from jtl2datev.core.tax_engine import EU_COUNTRIES
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +108,23 @@ def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> i
         vatc = _vat_reporting_country(customer_country, dispatch_country, vat_rate_float)
         vat_rate_normalised = vat_rate_float / 100.0
 
+        # Customer-VAT-ID nur für IC-Supply-Fälle:
+        # 0%-Steuersatz, Zielland EU, kein Export nach UK/CH.
+        # Bei B2C ohne VAT-ID, bei UK/CH-Export, bei Standardsatz: leer.
+        customer_vat_id: str | None = None
+        if (
+            vat_rate_float == 0
+            and customer_country in EU_COUNTRIES
+            and customer_country not in {"GB", "CH"}
+            and invoice.ship_to.vat_id
+        ):
+            customer_vat_id = invoice.ship_to.vat_id.strip()
+
         row = [
             transaction_type,       # Transaction type
             "Goods",                # Subject of the transaction
             "Marketplace",          # Sales channel
-            None,                   # VAT number
+            customer_vat_id,        # VAT number (Kunden-VAT bei IC-Supply)
             transaction_date,       # Transaction date
             invoice.invoice_no,     # Invoice number
             dispatch_country,       # Departure country
@@ -142,7 +156,16 @@ def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> i
                 cell.number_format = _DATE_FORMAT
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(str(output_path))
+    tmp = Path(str(output_path) + ".tmp")
+    try:
+        wb.save(str(tmp))
+        os.replace(tmp, output_path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
     logger.info("Taxually XLSX written: %d rows → %s", rows_written, output_path)
     return rows_written
 

@@ -353,6 +353,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country,
                     region=row["ship_region"],
+                    vat_id=row["customer_vat_id"] or None,
                     first_name=row["ship_first_name"] or None,
                     last_name=row["ship_last_name"] or None,
                     company=row["ship_company"] or None,
@@ -458,6 +459,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country.strip(),
                     region=row["ship_region"] or None,
+                    vat_id=row["customer_vat_id"] or None,
                     last_name=row["ship_full_name"] or None,
                     zip_code=row["ship_zip"] or None,
                     city=row["ship_city"] or None,
@@ -553,6 +555,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                 ship_to = PartyAddress(
                     country_iso=ship_country.strip(),
                     region=row["ship_region"] or None,
+                    vat_id=row["customer_vat_id"] or None,
                     first_name=row["ship_first_name"] or None,
                     last_name=row["ship_last_name"] or None,
                     company=row["ship_company"] or None,
@@ -634,4 +637,10 @@ class JtlInvoiceRepository(InvoiceRepository):
 def make_engine(settings: Settings) -> Engine:
     from sqlalchemy import create_engine
 
-    return create_engine(settings.sqlalchemy_url, fast_executemany=True)
+    return create_engine(
+        settings.sqlalchemy_url,
+        fast_executemany=True,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        connect_args={"timeout": 10},
+    )

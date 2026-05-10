@@ -83,6 +83,21 @@ JTL-MSSQL
                    core/archive.py (Auto-Archivierung unter exports/)
 ```
 
+### IO-Sicherheit: Atomic Writes & Archiv-Race-Prevention
+
+Alle Schreibvorgänge nutzen **tmp + replace** für Fehler-Sicherheit:
+- DATEV-Export (`core/datev.py`): `<path>.tmp` → `os.replace()`, tmp-Cleanup bei Exception
+- DutyPay/Taxually-XLSX (`core/dutypay.py`, `core/taxually.py`): openpyxl-`save()` auf `.tmp`, dann rename
+- Verbringungen-XLSX (`core/verbringung_taxually.py`): analog tmp+replace
+- Exchange-Rates-JSON (`core/exchange_rates.py`): atomic json-dump
+
+Auto-Archive-Race-Prevention:
+- Timestamp-Format: Microseconds (`%Y-%m-%d_%H-%M-%S-%f`) statt Sekunden
+- Collision-Suffix-Fallback (`_2`, `_3`, …) für identische Timestamps in parallelen Runs
+- `core/archive.py:archive_export()` und `archive_delta()` nutzen beide Mechanismen
+
+Effekt: Kein korrupter CSV/XLSX möglich bei Strg+C, parallelen Läufen oder Festplattenfehler-Fehler.
+
 ### Steuer-Engine: Eingaben
 
 Die Engine bekommt nur Fakten, **nie** JTLs Steuerentscheidung als Input
