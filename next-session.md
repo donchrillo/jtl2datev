@@ -1,12 +1,31 @@
 # Next Session
 
-## Tag 2.2 (nächste Sessions)
+## Stand: Sprint abgeschlossen, läuft End-to-End
 
-**Caddy + Service-Start** (User-Aufgabe). Caddy als Reverse-Proxy vor FastAPI (jtl2datev-api auf :8000, toci-erp auf :3000) mit shared TLS. Health-Checks, HTTP/2.
+jtl2datev ist als Tool in toci-erp integriert (Dev-Setup):
+- Eigener uvicorn auf `127.0.0.1:8402`, via `~/toci-erp/start.sh` mitgestartet
+- Frontend-Page `Tools → DATEV-Export` in toci-erp, gegated mit `accounting`-Permission
+- Shared HS256-JWT (`SECRET_KEY` in beiden `.env`), Vite-Proxy `/api/v1/jtl-datev/*` → `:8402`
+- **Caddy bleibt unangetastet** — läuft weiter nur für TEMU-stable
+- Branch `feat/frontend-ready` (jtl2datev) gepusht, kein PR-Merge-Druck
 
-## Tag 2.3 (User-Integration)
+## Was als Nächstes konkret ansteht
 
-**Frontend-Anbindung in toci-erp.** React 19 bindet `/api/v1/jtl-datev/...`-Endpoints an, JWT-Bearer-Token wird beim toci-erp-Login erzeugt und an alle jtl2datev-Requests mitgegeben.
+Keine Sprint-Folgearbeit zwingend. Nachziehbar wenn Zeit:
+
+- **DATEV-Page von Smoke-Test-Niveau aus polieren** (User-Feedback erst sammeln)
+- **`SECRET_KEY` ersetzen** vor jeder Produktion-Nutzung — dann in BEIDEN `.env`-Dateien gleichzeitig (sonst bricht JWT zwischen Services)
+- **systemd-Unit für jtl2datev** statt start.sh-Mitstart (wenn Setup stabilisiert)
+
+## Deferred bis ERP-Cutover (JTL ablöst)
+
+Aus dem Senior-Cloud-Review, alles erst beim ERP-Ablöse-Sprint relevant:
+
+- JTL-SQL-Lecks in `core/preflight.py` + `core/verbringung_pricing.py` hinter Repository-Methoden verstecken
+- API-Router auf `InvoiceRepository`-ABC typen statt konkreter `JtlInvoiceRepository`
+- `RawInvoice.source` Literal-Werte (`jtl_own` etc.) generalisieren
+- Toci-erp-Schema ergänzen: `currency`, `currency_factor`, `warehouse_country`, `is_credit_note`, `invoice_no`
+- Pydantic-Schemas mit `description`/`examples` für besseren TS-Codegen
 
 ## Offene Punkte — Audit & Dateneingabe
 
@@ -29,4 +48,4 @@
 - **W-20-Settings-Override:** Konten-Mappings (`DOMESTIC_ACCOUNT_BY_WAREHOUSE`, `DEBITOR_BY_PAYMENT`) aus Settings/DB pro Mandant statt Modul-Konstanten.
 - **W-20-Period-Validity:** `STANDARD_VAT_RATE` auf Period-Gültigkeit (Logik noch nicht umgesetzt).
 
-## Status: 437 Tests grün, API komplett auth-geschützt, Framework-agnostischer Core
+## Status: 437 Tests grün, API auth-geschützt, Frontend-Integration end-to-end verifiziert
