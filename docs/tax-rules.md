@@ -75,7 +75,7 @@ USt-Schlüssel) ausgewiesen werden.
 | JTL        | `Rechnung.tRechnung`     | manuelle Belege, `kPlattform=1`                    |
 | Amazon (regulär) | `Rechnung.tExternerBeleg` | seit 1.11.2024 via VCS (`cHerkunft='VCS'`)   |
 | Amazon (manuell korrigiert) | `Rechnung.tRechnung` | seltene Sonderfälle: User hat fehlerhaften VCS-Beleg gelöscht und in JTL neu erzeugt; `cZahlungsart='AmazonPayments'`, `ext=0`, `kPlattform` 50-65 |
-| TEMU       | —                        | NICHT über dieses Tool                             |
+| TEMU       | (legacy, eingestellt)    | Pilot Ende 2025; seit Januar 2026 keine neuen Belege; Filter 2026-05-10 entfernt |
 
 **Stichtag:** Amazon-Belege vor 2024-11-01 lagen in `tRechnung`, danach in
 `tExternerBeleg`. Datums-Untergrenze für Repository: `>= 2024-11-01`. Fokus

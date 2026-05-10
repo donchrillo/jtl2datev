@@ -100,7 +100,6 @@ DEBITOR_BY_PAYMENT: dict[str, int] = {
     "shopify_payments": 10010000,
     "otto": 10011000,
     "otto.de": 10011000,
-    "temu": 10012000,
 }
 
 

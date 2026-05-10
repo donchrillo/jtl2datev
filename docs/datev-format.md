@@ -95,7 +95,6 @@ Quelle: JTL Personenkonten-Konfiguration (Screenshot `samples/jera/Screenshot 20
 | **10009000** | rechnung_mit_klarna, Sofortbezahlen Klarna | Klarna |
 | **10010000** | shopify_payments | Shopify |
 | **10011000** | Otto | Otto |
-| **10012000** | TEMU | (außerhalb Tool-Scope) |
 | **10000000** | (Default-Fallback) | unbekannt / nicht gemappt |
 
 **Implementierung:** Mapping fest verdrahten (oder als Settings-Override). Lookup über `cZahlungsart` mit case-insensitive Match.
@@ -303,13 +302,14 @@ SQL-Filter berücksichtigt dies und schließt Master-Positionen von Gesamtverarb
 Storno-Gutschrift-Zeile (`nBelegtyp=1`), die den Original-Beleg gegenbucht. Dies sichert
 vollständige Audit-Trail für Steuerberater.
 
-### Temu (`cExterneAuftragsnummer LIKE 'PO%'`) — ausgeschlossen
+### Temu — Filter entfernt (2026-05-10)
 
-Ende 2025 wurde Temu testweise importiert, dann vom Steuerberater zurückgerollt.
-Die `PO-…`-Bestellnummern bleiben in der DB, dürfen aber nicht in den DATEV-Export.
-Filter im SQL-Layer für `_SQL_OWN` und `_SQL_CREDIT_NOTES`:
-`cExterneAuftragsnummer NOT LIKE 'PO%'`. Sammelgutschriften (`SR202602…`) gegen
-diese Original-Rechnungen werden über den JOIN ebenfalls ausgefiltert.
+Ende 2025 lief ein Temu-Pilot (`cExterneAuftragsnummer LIKE 'PO%'`), der vom
+Steuerberater zurückgerollt wurde. Bis Mai 2026 war ein Filter aktiv, der
+`PO-…`-Belege aus dem DATEV-Export ausgeschlossen hat. Da seit Januar 2026
+keine neuen Temu-Belege mehr importiert werden (User-Bestätigung), wurde der
+Filter entfernt. Re-Exports historischer Monate würden Temu-Belege jetzt
+mitführen — bei Bedarf manuell ausschließen oder Filter temporär reaktivieren.
 
 ### Amazon Italien VCS-IDU (`cHerkunft='VCS-IDU'`) — bleibt drin
 

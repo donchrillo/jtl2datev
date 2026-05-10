@@ -154,7 +154,7 @@ Die Engine bekommt nur Fakten, **nie** JTLs Steuerentscheidung als Input
 | eBay, Kaufland, Otto, JTL-manuell | `Rechnung.tRechnung` — `_fetch_own()`. Otto liegt **nicht** in `tExternerBeleg`, sondern wie alle anderen Eigen-Belege in `tRechnung`. |
 | Amazon (ab 2024-11-01) | `Rechnung.tExternerBeleg*` (VCS-Import) — `_fetch_external()`. **Nur Amazon** landet hier. |
 | Amazon (vor 2024-11-01 / manuell korrigiert) | `Rechnung.tRechnung` — `_fetch_own()` (Sonderfälle, `cZahlungsart='AmazonPayments'`) |
-| TEMU               | **außerhalb dieses Tools**                         |
+| TEMU (Pilot Ende 2025, eingestellt) | seit 2026-05-10 nicht mehr ausgefiltert; keine neuen Belege mehr seit Januar 2026 |
 
 ## Was noch offen ist
 

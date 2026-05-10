@@ -115,9 +115,6 @@ WHERE r.nIstEntwurf = 0
   AND r.dErstellt >= :hard_min
   AND r.dErstellt >= :date_from
   AND r.dErstellt < :date_to_excl
-  -- Temu-Belege (cExterneAuftragsnummer LIKE 'PO%') bleiben drin: DutyPay-Spec
-  -- verlangt vollständige Auslandsverkaufs-Liste (auch DE→DE B2C). Filter sitzt
-  -- ausschließlich im DATEV-Exporter (core/datev.py).
 ORDER BY r.kRechnung
 """)
 

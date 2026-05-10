@@ -2,6 +2,27 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Temu-Filter entfernt (next-session Punkt 7)
+
+User-Bestätigung: keine neuen Temu-Belege mehr seit Januar 2026. Der Pilot war Ende 2025 vom Steuerberater zurückgerollt worden, der DATEV-Filter (`cExterneAuftragsnummer LIKE 'PO%'` → skip) war seitdem aktiv.
+
+**Entfernt:**
+- `core/datev.py`: PO-Prefix-Skip-Block in `write_extf_buchungsstapel` Loop.
+- `core/db_jtl.py`: SQL-Kommentar zum Temu-Filter in `_SQL_OWN`.
+- `core/reference_data.py`: `"temu": 10012000` aus `DEBITOR_BY_PAYMENT`.
+- `tests/test_datev.py`: Komplette `TestTemuFilter`-Klasse (3 Tests).
+- `docs/datev-format.md`: Konto 10012000 aus Debitor-Tabelle, Filter-Notiz auf "entfernt 2026-05-10" umgeschrieben.
+- `docs/architecture.md`, `docs/tax-rules.md`, `docs/dutypay-format.md`: Temu-Erwähnungen auf legacy-Status aktualisiert.
+
+**Behalten:**
+- DutyPay-Verhalten unverändert: PO-Prefix-Belege erscheinen weiter (legacy-Sicherheitsnetz für historische Re-Exports). Test umbenannt: `test_po_prefix_beleg_included_in_dutypay`.
+
+**Implikation:** Re-Exports historischer Monate (Q4-2025) würden Temu-Belege jetzt mitführen. Falls relevant: temporär Filter im Aufrufer reaktivieren oder Belege manuell ausschließen.
+
+**Tests:** 427 passed (-3 wegen TestTemuFilter-Removal), 14 skipped.
+
+---
+
 ## 2026-05-10 — W-20 (Stammdaten-Hygiene) umgesetzt
 
 **`core/reference_data.py`:** drei weitere Konstanten zentralisiert:

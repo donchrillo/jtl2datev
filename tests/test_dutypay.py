@@ -625,9 +625,10 @@ class TestWriteDutyPayCsv:
         assert row[header.index("Incoterms")] == "DDP"
         assert row[header.index("KindOfBusiness")] == "EXPORT"
 
-    def test_temu_beleg_included_in_dutypay(self) -> None:
-        # Temu belege (DE→DE B2C, external_order_no starts with "PO-") must appear
-        # in the DutyPay output. The DATEV exporter filters them; DutyPay does not.
+    def test_po_prefix_beleg_included_in_dutypay(self) -> None:
+        # Legacy PO-prefix-Belege (Temu-Pilot Ende 2025, zurückgerollt) müssen
+        # weiterhin im DutyPay-Output erscheinen (DE→DE B2C). Sicherheitsnetz
+        # für historische Re-Exports.
         inv = _invoice(
             wh="DE",
             dest="DE",
@@ -637,7 +638,7 @@ class TestWriteDutyPayCsv:
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
             path = Path(f.name)
         report = write_dutypay_csv([inv], out_path=path, own_vat_ids=_OWN_VAT_IDS)
-        assert report.rows_written == 1, "Temu beleg must be included in DutyPay output"
+        assert report.rows_written == 1, "PO-prefix beleg must be included in DutyPay output"
         with path.open(encoding="utf-8", newline="") as fh:
             reader = csv.reader(fh, delimiter=";")
             header = next(reader)

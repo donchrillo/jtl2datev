@@ -50,8 +50,6 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 6. **Restliche DB-Klärungen:** `nSteuereinstellung` (0/10/15/20-Bedeutung), `tRechnungKorrektur`-Vollständigkeit (own invoices credit note logic), `tRechnungStorno`-Auswirkung auf `nIstStorniert`.
 
-7. **Temu-Filter perspektivisch entfernen:** Laut User keine neuen Temu-Belege mehr seit Januar 2026. Der Filter kann komplett entfallen, sobald sichergestellt ist, dass kein neuer Temu-Import stattfindet.
-
 8. **SK-Departure-Bewegungen Taxually-Klärung (User):** SK→CZ/DE/PL FC_TRANSFERs werden aktuell mit leerer Departure-VAT-ID exportiert. Steuerlich ordnen die Finanzämter diese bisher Amazon zu (nicht uns), Pro-Forma-PDFs werden weiterhin als Beleg erzeugt. Offen: Verarbeitet Taxually XLSX-Zeilen mit leerer SK-VAT überhaupt? Falls nein, alternative Strategien: (a) SK-Departure-Zeilen aus dem XLSX rausfiltern (PDFs trotzdem behalten), (b) komplett weglassen. Vor Q2-Meldung klären.
 
 ## Offene Review-Punkte (Code-Lücken)
@@ -62,7 +60,8 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 ## Phase 2 (Erweiterungen)
 
 - **W-16** CLI-Umstrukturierung + Service-Layer: `cli.py` → `cli/`-Package (Sub-Commands pro Modul) + `core/services/` als Abstraktions-Schicht über Repository + Tax-Engine + Export. 1–2 Tage, eigene Phase.
-- **W-19** Repository-Erweiterung: `ArticlePricingRepository` für artikel-bezogene Preis-Lookups. 1–4h.
+
+(W-19 wurde durch B-9 abgedeckt — `ArticlePricingRepository` lebt jetzt in `core/repositories.py` mit JTL-Implementierung in `core/db_jtl.py`.)
 
 ## Notizen für Orchestrator
 

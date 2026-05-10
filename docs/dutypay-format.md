@@ -280,9 +280,9 @@ Auch in den Jera-Samples praktisch 0% befüllt. **Regel:** Nicht befüllen, Duty
 ### 6. TAX_COLLECTION_RESPONSIBILITY — Seller-Edge-Case
 Im Sample 1 Zeile mit `KindOfBusiness=SALE` + `TAX_REPORTING_SCHEME=UK_VOEC-IMPORT` (Wert: `SELLER`). Diese Kombination ist widersprüchig und wird vorerst **nicht implementiert**. Clarification mit User abhängig von Häufigkeit in Live-Daten.
 
-## Temu-Belege im DutyPay-Output
+## PO-Prefix-Belege (Temu-Pilot, eingestellt)
 
-Temu-Belege (Pilot Ende 2025, zurückgerollt) tragen externe Auftragsnummern mit Präfix `PO-` (z.B. `PO-123456789`). Sie sind **DE→DE B2C** und damit OSS-irrelevant, erscheinen aber bewusst im DutyPay-Output — analog zu Jera. Der Temu-Filter sitzt ausschließlich im DATEV-Exporter (`datev.py`), nicht im Repository und nicht in `dutypay.py`. Das gewährleistet Deckungsgleichheit mit Jera-Referenzdaten.
+Temu-Belege (Pilot Ende 2025, zurückgerollt) tragen externe Auftragsnummern mit Präfix `PO-` (z.B. `PO-123456789`). Sie sind **DE→DE B2C** und damit OSS-irrelevant, erscheinen aber im DutyPay-Output — analog zu Jera. Der frühere DATEV-Filter wurde am 2026-05-10 entfernt (keine neuen Temu-Belege seit Januar 2026). DutyPay-Verhalten ist unverändert: PO-Belege werden weiterhin mitgeführt.
 
 ## Stand 2026-05-06 — Header-Umstellung + Bug-Fixes
 
