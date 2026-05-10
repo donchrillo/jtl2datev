@@ -15,11 +15,10 @@ _VAT_ID_PREFIXES: frozenset[str] = EU_COUNTRIES | frozenset({"GB", "XI", "CH"})
 
 _AMAZON_PLATFORM_PREFIX = "amazon"  # matches Amazon.de, Amazon.co.uk, Amazon.fr, …
 
-# Marketplace-Facilitator destinations: Amazon collects local VAT itself
-# (UK post-Brexit, Switzerland) — no VAT in our DATEV booking.
-# UK is the only marketplace-facilitator destination in practice. Switzerland
-# is a regular third-country export — Amazon does not withhold Swiss VAT.
-MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB"})
+# Marketplace-Facilitator destinations: Amazon collects local VAT itself —
+# UK (post-Brexit) und CH (Schweizer Plattformbesteuerung MWSTG Art. 20a,
+# ab 01.01.2025) — Amazon erhebt lokale MWSt selbst.
+MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB", "CH"})
 
 # Standard VAT rates per country (2026). Reduced rates not modelled —
 # Plausi mismatches there end up as warn, never error.
@@ -47,7 +46,7 @@ STANDARD_VAT_RATE: dict[str, Decimal] = {
     "NL": Decimal("21"),
     "PL": Decimal("23"),
     "PT": Decimal("23"),
-    "RO": Decimal("21"),
+    "RO": Decimal("21"),  # ab 01.01.2026 (vorher 19 %, OUG 156/2024)
     "SE": Decimal("25"),
     "SI": Decimal("22"),
     "SK": Decimal("23"),
@@ -124,13 +123,20 @@ def decide(
         # Domestic B2B reverse-charge: marketplace booked 0% on a customer with
         # a vat_id (e.g. Italian / Spanish national reverse charge). Mirror that
         # decision instead of demanding the standard rate.
-        if line.vat_rate == _ZERO and cleaned_vat_id is not None:
+        # Exception: DE§13b only covers specific industries (construction/scrap/cleaning),
+        # not generic e-commerce — do not mirror 0% for DE domestic.
+        if line.vat_rate == _ZERO and cleaned_vat_id is not None and wh != "DE":
             return TaxDecision(
                 treatment=TaxTreatment.DOMESTIC,
                 expected_vat_rate=_ZERO,
                 tax_country=wh,
                 cleaned_vat_id=cleaned_vat_id,
                 notes=tuple(notes),
+            )
+        if line.vat_rate == _ZERO and cleaned_vat_id is not None and wh == "DE":
+            notes.append(
+                "DE domestic with vat_id and 0% — §13b only applies to specific industries"
+                " (construction/scrap/cleaning), please verify manually"
             )
         return TaxDecision(
             treatment=TaxTreatment.DOMESTIC,

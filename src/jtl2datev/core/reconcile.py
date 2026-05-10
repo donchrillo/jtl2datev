@@ -1,3 +1,6 @@
+from decimal import Decimal
+from typing import Literal
+
 from jtl2datev.core.models import LineDecision, RawInvoice, ReconcileMismatch, TaxTreatment
 
 _ZERO_VAT_TREATMENTS = {
@@ -36,6 +39,7 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
                 and line.gross > 0
                 and decision.treatment in (TaxTreatment.DOMESTIC, TaxTreatment.OSS_B2C)
             )
+            severity: Literal["info", "warn", "error"]
             if is_marketplace_facilitator or zero_vat_zero_gross:
                 severity = "info"
             elif zero_vat_with_gross and invoice.is_credit_note:
@@ -55,6 +59,13 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
             )
 
         if decision.treatment in _ZERO_VAT_TREATMENTS and line.vat_amount != 0:
+            vat_amount_severity: Literal["info", "warn", "error"]
+            if abs(line.vat_amount) <= Decimal("0.01"):
+                vat_amount_severity = "warn"
+            elif is_marketplace_facilitator:
+                vat_amount_severity = "info"
+            else:
+                vat_amount_severity = "error"
             mismatches.append(
                 ReconcileMismatch(
                     invoice_no=invoice.invoice_no,
@@ -63,7 +74,7 @@ def compare(invoice: RawInvoice, decisions: list[LineDecision]) -> list[Reconcil
                     field="vat_amount",
                     jtl_value=str(line.vat_amount),
                     engine_value="0",
-                    severity="info" if is_marketplace_facilitator else "error",
+                    severity=vat_amount_severity,
                 )
             )
 

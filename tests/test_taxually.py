@@ -20,8 +20,8 @@ from jtl2datev.core.taxually_delta import (
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-def _addr(country: str) -> PartyAddress:
-    return PartyAddress(country_iso=country)
+def _addr(country: str, vat_id: str | None = None) -> PartyAddress:
+    return PartyAddress(country_iso=country, vat_id=vat_id)
 
 
 def _line(
@@ -51,6 +51,7 @@ def _invoice(
     currency: str = "EUR",
     invoice_date: datetime.date = datetime.date(2026, 1, 15),
     is_credit_note: bool = False,
+    ship_to_vat_id: str | None = None,
 ) -> RawInvoice:
     return RawInvoice(
         source="jtl_own",
@@ -59,7 +60,7 @@ def _invoice(
         currency=currency,
         currency_factor=Decimal("1"),
         warehouse_country=warehouse_country,
-        ship_to=_addr(ship_to_country),
+        ship_to=_addr(ship_to_country, vat_id=ship_to_vat_id),
         bill_to=_addr(ship_to_country),
         is_credit_note=is_credit_note,
         lines=(
@@ -277,3 +278,54 @@ def test_date_shift_overrides_transaction_date(tmp_path: Path) -> None:
     if isinstance(val, datetime.datetime):
         val = val.date()
     assert val == datetime.date(2026, 2, 1)
+
+
+# ── XI (Northern Ireland) VAT-ID in Taxually ─────────────────────────────────
+
+def test_xi_vat_id_written_to_taxually_column(tmp_path: Path) -> None:
+    """XI destination with valid XI-VAT-ID → VAT number column is populated."""
+    out = tmp_path / "out.xlsx"
+    inv = _invoice(
+        warehouse_country="DE",
+        ship_to_country="XI",
+        vat_rate=Decimal("0"),
+        vat_amount=Decimal("0"),
+        gross=Decimal("100.00"),
+        net=Decimal("100.00"),
+        ship_to_vat_id="XI123456789",
+    )
+    format_taxually_xlsx([inv], out)
+    _, rows = _read_xlsx(out)
+    vat_col = TAXUALLY_COLUMNS.index("VAT number")
+    assert rows[0][vat_col] == "XI123456789"
+
+
+def test_invalid_vat_id_omitted_from_taxually_column(tmp_path: Path) -> None:
+    """Invalid VAT-ID (e.g. CIF) → VAT number column is None, warning logged."""
+    import io
+    import logging
+
+    out = tmp_path / "out.xlsx"
+    inv = _invoice(
+        warehouse_country="DE",
+        ship_to_country="FR",
+        vat_rate=Decimal("0"),
+        vat_amount=Decimal("0"),
+        gross=Decimal("100.00"),
+        net=Decimal("100.00"),
+        ship_to_vat_id="B06800015",  # Spanish CIF, not a valid EU VAT-ID
+    )
+    log_capture = io.StringIO()
+    handler = logging.StreamHandler(log_capture)
+    taxually_logger = logging.getLogger("jtl2datev.core.taxually")
+    taxually_logger.addHandler(handler)
+    taxually_logger.setLevel(logging.WARNING)
+    try:
+        format_taxually_xlsx([inv], out)
+    finally:
+        taxually_logger.removeHandler(handler)
+
+    _, rows = _read_xlsx(out)
+    vat_col = TAXUALLY_COLUMNS.index("VAT number")
+    assert rows[0][vat_col] is None
+    assert "does not look like a valid VAT-ID" in log_capture.getvalue()

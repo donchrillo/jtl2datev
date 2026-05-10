@@ -385,14 +385,24 @@ class JtlInvoiceRepository(InvoiceRepository):
                 marketplace_country = _marketplace_country_for(
                     row["platform_name"] or None, warehouse.strip()
                 )
+                _own_cf = _decimal(row["currency_factor"])
+                _own_currency = (row["currency"] or "EUR").strip().upper()
+                if not _own_cf and _own_currency != "EUR":
+                    logger.warning(
+                        "_fetch_own %s: currency_factor=0/None for non-EUR currency %s"
+                        " — using 1.0; check JTL data",
+                        row["invoice_no"] or str(inv_key),
+                        _own_currency,
+                    )
+                _own_cf = _own_cf or Decimal("1")
                 yield RawInvoice(
                     source="jtl_own",
                     jtl_primary_key=int(inv_key) if inv_key is not None else None,
                     invoice_no=row["invoice_no"] or str(inv_key),
                     invoice_date=_to_date(inv_date_raw),
                     service_date=_to_date(svc_date_raw) if svc_date_raw else None,
-                    currency=row["currency"] or "EUR",
-                    currency_factor=_decimal(row["currency_factor"]) or Decimal("1"),
+                    currency=_own_currency,
+                    currency_factor=_own_cf,
                     warehouse_country=warehouse.strip(),
                     ship_to=ship_to,
                     bill_to=bill_to,
@@ -486,14 +496,24 @@ class JtlInvoiceRepository(InvoiceRepository):
                 marketplace_country = _marketplace_country_for(
                     row["platform_name"] or None, warehouse.strip()
                 )
+                _ext_cf = _decimal(row["currency_factor"])
+                _ext_currency = (row["currency"] or "EUR").strip().upper()
+                if not _ext_cf and _ext_currency != "EUR":
+                    logger.warning(
+                        "_fetch_external %s: currency_factor=0/None for non-EUR currency %s"
+                        " — using 1.0; check JTL data",
+                        row["invoice_no"] or str(beleg_key),
+                        _ext_currency,
+                    )
+                _ext_cf = _ext_cf or Decimal("1")
                 yield RawInvoice(
                     source="jtl_external",
                     jtl_primary_key=int(beleg_key) if beleg_key is not None else None,
                     invoice_no=row["invoice_no"] or str(beleg_key),
                     invoice_date=_to_date(row["invoice_date"]),
                     service_date=None,
-                    currency=(row["currency"] or "EUR").strip(),
-                    currency_factor=_decimal(row["currency_factor"]) or Decimal("1"),
+                    currency=_ext_currency,
+                    currency_factor=_ext_cf,
                     warehouse_country=warehouse.strip(),
                     ship_to=ship_to,
                     bill_to=bill_to,
@@ -591,7 +611,16 @@ class JtlInvoiceRepository(InvoiceRepository):
                 line = _synthetic_line(gross, net)
 
                 raw_currency = row["currency"] or "EUR"
-                currency = raw_currency.strip()[:3]
+                currency = raw_currency.strip()[:3].upper()
+                _cn_cf = _decimal(row["currency_factor"])
+                if not _cn_cf and currency != "EUR":
+                    logger.warning(
+                        "_fetch_credit_notes %s: currency_factor=0/None for non-EUR currency %s"
+                        " — using 1.0; check JTL data",
+                        inv_no_raw,
+                        currency,
+                    )
+                _cn_cf = _cn_cf or Decimal("1")
 
                 kunde = row["kKunde"]
                 customer_no = str(kunde) if kunde else None
@@ -606,7 +635,7 @@ class JtlInvoiceRepository(InvoiceRepository):
                     invoice_date=_to_date(row["invoice_date"]),
                     service_date=None,
                     currency=currency,
-                    currency_factor=_decimal(row["currency_factor"]) or Decimal("1"),
+                    currency_factor=_cn_cf,
                     warehouse_country=warehouse.strip(),
                     ship_to=ship_to,
                     bill_to=bill_to,

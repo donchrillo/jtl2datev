@@ -50,6 +50,21 @@ def test_no_mismatches_for_matching_domestic() -> None:
     assert result == []
 
 
+def test_vat_amount_cent_rounding_is_warn() -> None:
+    """vat_amount == 0.01 in a zero-VAT treatment → severity=warn, not error."""
+    line = _line(1, Decimal("0.00"), Decimal("0.01"))
+    decision = TaxDecision(
+        treatment=TaxTreatment.IGL_B2B,
+        expected_vat_rate=Decimal("0"),
+        tax_country="DE",
+    )
+    ld = LineDecision(line=line, decision=decision)
+    result = compare(_BASE_INVOICE, [ld])
+    vat_mismatches = [m for m in result if m.field == "vat_amount"]
+    assert len(vat_mismatches) == 1
+    assert vat_mismatches[0].severity == "warn"
+
+
 def test_igl_b2b_with_nonzero_vat_amount_is_error() -> None:
     line = _line(1, Decimal("0.00"), Decimal("19.00"))
     decision = TaxDecision(

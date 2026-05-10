@@ -57,11 +57,13 @@ USt-Schlüssel) ausgewiesen werden.
 ## Drittland
 
 - Generell: steuerfrei nach §4 Nr. 1a UStG (Ausfuhr)
-- **Spezialfall UK + CH über Amazon:** Amazon agiert oft als Marketplace
-  Facilitator und behält die Steuer bereits ein. → Im Buchungsexport muss das
-  separat behandelt werden (vermutlich Netto, kein USt-Ausweis, eigenes Konto).
-- TODO: präzise Logik festlegen — woran erkennt man im JTL-Datensatz, ob Amazon
-  die Steuer einbehalten hat? (Marketplace-Kennung + Lieferland?)
+- **Spezialfall UK + CH über Amazon:** Amazon agiert als Marketplace Facilitator und behält die Steuer ein.
+  - **UK:** seit Brexit (HMRC VAT Notice 1003).
+  - **CH:** ab 01.01.2025 (MWSTG Art. 20a, Plattformbesteuerung).
+  - **Erkennungsmerkmal in der Engine:** Plattform-Prefix `amazon` + `gross == net` → `MARKETPLACE_FACILITATOR`.
+  - **Buchungsausweis:** Netto = Brutto, kein USt-Ausweis, Konto 4328000.
+  - Andere Plattformen (eBay/Kaufland) versenden in der Praxis nicht nach UK/CH — sollte das jemals passieren, wäre die Engine entsprechend zu erweitern.
+- **UK aus EU-Lager mit fehlendem Amazon-Einbehalt:** seltener Fall (1–2 Belege/Monat aus FR/ES) — Amazon kassiert nicht, wir melden 20 % UK-VAT über die UK-Steuerregistrierung. Engine-Treatment: `EXPORT_LOCAL_VAT`, Konto 4325000.
 
 ## Rechnungsquellen (DB-Routing seit 2024-11-01)
 

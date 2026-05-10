@@ -2,6 +2,31 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint B (Tax-Korrektheit) umgesetzt
+
+**Sechs kritische Tax-Punkte aus CONSOLIDATED.md Zeilen 94-106 implementiert:**
+
+**B-5** `core/tax_engine.py`: RO-Steuersatz 21% mit Stichtag 01.01.2026 + Quelle (OUG 156/2024) dokumentiert. Verification-Status: User hat klargestellt, dass ab 01.01.2026 21% gilt (kein Rollback).
+
+**B-6** `core/tax_engine.py`: CH zu `MARKETPLACE_FACILITATOR_DESTINATIONS` ergänzt. Schweiz unterliegt seit 01.01.2025 Marketplace-Facilitator-Regeln (MWSTG Art. 20a). `gross==net`-Trigger gilt automatisch auch für CH (wie für UK).
+
+**W-1** `core/taxually.py`: XI (Nordirland) zu erlaubten IC-Supply-Destinations hinzugefügt. `looks_like_valid_vat_id()` + `normalise_vat_id()` werden vor Übernahme von Customer-VAT-ID aufgerufen; ungültige Format-Treffer werden geloggt und ausgelassen.
+
+**W-4** `core/tax_engine.py`: DE→DE B2B mit `vat_id` + 0% wird nicht mehr blind auf Reverse-Charge gemirror't. Nur §13b-Bauleistungen/Schrott/Reinigung sind echte RC-Fälle. Für alle anderen de-de-b2b-0%-Fälle: `expected_vat_rate=19` mit note, Reconcile wirft WARN.
+
+**W-8** `core/reconcile.py`: Cent-Toleranz für Rounding `abs(vat_amount) <= 0,01` reduziert Mismatches mit severity `warn` (statt `error`) bei IGL_B2B/THIRD_COUNTRY/MARKETPLACE_FACILITATOR.
+
+**W-13** `core/db_jtl.py`: `currency_factor=0` oder `None` bei Nicht-EUR-Währung loggt explizite WARNING an **allen drei Fetch-Stellen** (`_fetch_own`, `_fetch_external`, `_fetch_credit_notes`). Kein silent fallback auf 1.0 mehr ohne Log-Spur.
+
+**Bewusst nicht umgesetzt (User-Entscheidung):**
+- **B-7** (£135-Schwelle für UK-Versand): Amzon UK-MF-Volumen 99,5% aus UK-Lager. Schwelle praktisch irrelevant.
+- **B-8** (SRK-Cross-Check Master-RK): Aufgeschoben bis Mai/Juni bei Bedarf.
+- **F-7** (Period-Validity STANDARD_VAT_RATE): Tool produktiv erst ab 2026, nicht notwendig für Q1-Q2.
+
+**Tests:** 412 passed, 14 skipped. Keine Verhaltensänderungen, nur steuerliche Korrektheit verschärft.
+
+---
+
 ## 2026-05-10 — Sprint A (IO-Sicherheit) umgesetzt
 
 **Fünf kritische Punkte aus Robustness-Review (CONSOLIDATED.md Zeilen 82-92) implementiert:**

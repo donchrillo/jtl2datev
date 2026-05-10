@@ -14,7 +14,7 @@ from typing import Iterable
 import openpyxl
 
 from jtl2datev.core.models import RawInvoice
-from jtl2datev.core.tax_engine import EU_COUNTRIES
+from jtl2datev.core.tax_engine import EU_COUNTRIES, looks_like_valid_vat_id, normalise_vat_id
 
 logger = logging.getLogger(__name__)
 
@@ -109,16 +109,24 @@ def format_taxually_xlsx(invoices: Iterable[RawInvoice], output_path: Path) -> i
         vat_rate_normalised = vat_rate_float / 100.0
 
         # Customer-VAT-ID nur für IC-Supply-Fälle:
-        # 0%-Steuersatz, Zielland EU, kein Export nach UK/CH.
+        # 0%-Steuersatz, Zielland EU oder XI (Nordirland), kein Export nach UK/CH.
         # Bei B2C ohne VAT-ID, bei UK/CH-Export, bei Standardsatz: leer.
         customer_vat_id: str | None = None
         if (
             vat_rate_float == 0
-            and customer_country in EU_COUNTRIES
+            and customer_country in (EU_COUNTRIES | {"XI"})
             and customer_country not in {"GB", "CH"}
             and invoice.ship_to.vat_id
         ):
-            customer_vat_id = invoice.ship_to.vat_id.strip()
+            raw_vat = invoice.ship_to.vat_id
+            if looks_like_valid_vat_id(raw_vat):
+                customer_vat_id = normalise_vat_id(raw_vat, customer_country)
+            else:
+                logger.warning(
+                    "invoice %s: ship_to.vat_id %r does not look like a valid VAT-ID — omitting",
+                    invoice.invoice_no,
+                    raw_vat,
+                )
 
         row = [
             transaction_type,       # Transaction type

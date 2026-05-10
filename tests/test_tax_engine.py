@@ -135,6 +135,34 @@ def test_b2c_when_marketplace_charged_vat_with_junk_vat_id() -> None:
     assert d.cleaned_vat_id == "ESB06800015"
 
 
+def test_ch_marketplace_facilitator_gross_equals_net() -> None:
+    """CH via Amazon with gross==net → MARKETPLACE_FACILITATOR (MWSTG Art. 20a)."""
+    line = RawInvoiceLine(
+        line_no=1, quantity=Decimal("1"), net=Decimal("100"),
+        gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
+    )
+    inv = _invoice("DE", "CH", platform_name="Amazon.de")
+    inv = inv.model_copy(update={"lines": (line,)})
+    d = decide(inv, line, own_vat_countries=OWN_VAT)
+    assert d.treatment == TaxTreatment.MARKETPLACE_FACILITATOR
+    assert d.expected_vat_rate == Decimal("0")
+    assert d.tax_country == "CH"
+
+
+def test_de_domestic_zero_vat_with_vat_id_not_rc() -> None:
+    """DE→DE + vat_id + 0% must NOT be treated as RC; expected_rate=19 with note."""
+    line = RawInvoiceLine(
+        line_no=1, quantity=Decimal("1"), net=Decimal("100"),
+        gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
+    )
+    inv = _invoice("DE", "DE", vat_id="DE123456789")
+    inv = inv.model_copy(update={"lines": (line,)})
+    d = decide(inv, line, own_vat_countries=OWN_VAT)
+    assert d.treatment == TaxTreatment.DOMESTIC
+    assert d.expected_vat_rate == Decimal("19")
+    assert any("§13b" in n for n in d.notes)
+
+
 def test_normalise_vat_id_adds_missing_prefix() -> None:
     """Marketplaces sometimes drop the leading IT/ES prefix."""
     from jtl2datev.core.tax_engine import normalise_vat_id
