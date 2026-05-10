@@ -10,10 +10,12 @@ _VAT_ID_PREFIXES: frozenset[str] = EU_COUNTRIES | frozenset({"GB", "XI", "CH"})
 
 _AMAZON_PLATFORM_PREFIX = "amazon"  # matches Amazon.de, Amazon.co.uk, Amazon.fr, …
 
-# Marketplace-Facilitator destinations: Amazon collects local VAT itself —
-# UK (post-Brexit) und CH (Schweizer Plattformbesteuerung MWSTG Art. 20a,
-# ab 01.01.2025) — Amazon erhebt lokale MWSt selbst.
-MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB", "CH"})
+# Marketplace-Facilitator destinations: Amazon collects local VAT itself.
+# Aktuell nur UK (post-Brexit). Schweiz wird trotz MWSTG Art. 20a (Plattform-
+# besteuerung ab 01.01.2025) als regulärer Drittlandsexport gebucht (4121000) —
+# auch wenn Amazon die Schweizer MWSt einbehält. Klärung mit Steuerberater
+# offen, ob CH später wie GB behandelt werden soll.
+MARKETPLACE_FACILITATOR_DESTINATIONS: frozenset[str] = frozenset({"GB"})
 
 _ZERO = Decimal("0")
 

@@ -44,6 +44,8 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 4. **Steuerberater-Klärung (User):** Beleginfo-Felder DATEV (aktuell Spalten 13-17 als Art/Inhalt 1-5). Prüfen ob auf Zusatzinformation-Spalten umsteigen soll (Jera nutzte andere Feldnamen).
 
+4b. **Steuerberater-Klärung CH-Buchung (User):** CH wird aktuell als regulärer Drittlandsexport gebucht (4121000), auch wenn Amazon die Schweizer MWSt einbehält (Plattformbesteuerung MWSTG Art. 20a ab 01.01.2025). Klären ob CH künftig wie GB als Marketplace-Facilitator (4328000) gebucht werden soll. Falls ja: in `core/tax_engine.py` `MARKETPLACE_FACILITATOR_DESTINATIONS` um `"CH"` erweitern (Sprint-B-Revert vom 2026-05-10 zurückrollen). Audit-Tag in `rules.py` Rule 8 (`THIRD-EU-{wh}-CH`) ist aktuell irreführend, weil CH kein EU-Land ist — Note „THIRD_COUNTRY to EU dest — verify" könnte angepasst werden, ist aber explizit „erstmal so lassen" (User 2026-05-10).
+
 5. **VIES-Online-Validierung (langfristig):** Aktuell Format-Plausibilität. Echte VIES-API mit Cache für 100% B2B-Sicherheit.
 
 6. **Restliche DB-Klärungen:** `nSteuereinstellung` (0/10/15/20-Bedeutung), `tRechnungKorrektur`-Vollständigkeit (own invoices credit note logic), `tRechnungStorno`-Auswirkung auf `nIstStorniert`.

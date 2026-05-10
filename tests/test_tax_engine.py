@@ -134,8 +134,10 @@ def test_b2c_when_marketplace_charged_vat_with_junk_vat_id() -> None:
     assert d.cleaned_vat_id == "ESB06800015"
 
 
-def test_ch_marketplace_facilitator_gross_equals_net() -> None:
-    """CH via Amazon with gross==net → MARKETPLACE_FACILITATOR (MWSTG Art. 20a)."""
+def test_ch_treated_as_third_country() -> None:
+    """CH wird als regulärer Drittlandsexport behandelt (4121000), nicht als
+    Marketplace-Facilitator — auch wenn Amazon die Schweizer MWSt einbehält.
+    Klärung mit Steuerberater offen, ob CH später wie GB behandelt werden soll."""
     line = RawInvoiceLine(
         line_no=1, net=Decimal("100"),
         gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
@@ -143,7 +145,7 @@ def test_ch_marketplace_facilitator_gross_equals_net() -> None:
     inv = _invoice("DE", "CH", platform_name="Amazon.de")
     inv = inv.model_copy(update={"lines": (line,)})
     d = decide(inv, line, own_vat_countries=OWN_VAT)
-    assert d.treatment == TaxTreatment.MARKETPLACE_FACILITATOR
+    assert d.treatment == TaxTreatment.THIRD_COUNTRY
     assert d.expected_vat_rate == Decimal("0")
     assert d.tax_country == "CH"
 
