@@ -8,29 +8,13 @@ from sqlalchemy import Engine, text
 
 from jtl2datev.core.config import Settings
 from jtl2datev.core.models import PartyAddress, RawInvoice, RawInvoiceLine
+from jtl2datev.core.reference_data import HARD_MIN_INVOICE_DATE as _MIN_DATE, PLATFORM_COUNTRY as _PLATFORM_COUNTRY
 from jtl2datev.core.repositories import InvoiceRepository
 from jtl2datev.core.tax_engine import STANDARD_VAT_RATE
 
 logger = logging.getLogger(__name__)
 
-_MIN_DATE = date(2024, 11, 1)
-
 _SUFFIX_RE = re.compile(r"_\d+$")
-
-# Explicit mapping of known tPlattform.cName values → ISO-2 country.
-# Maintained as a flat table for clarity and easy extension.
-# "Amazon" (generic) is intentionally absent — it has no clear single market.
-_PLATFORM_COUNTRY: dict[str, str] = {
-    "Amazon.de": "DE",
-    "Amazon.fr": "FR",
-    "Amazon.it": "IT",
-    "Amazon.es": "ES",
-    "Amazon.com.be": "BE",
-    "Amazon.nl": "NL",
-    "Amazon.se": "SE",
-    "Amazon.pl": "PL",
-    "Amazon.co.uk": "GB",
-}
 
 
 def _marketplace_country_for(platform_name: str | None, fallback: str) -> str:
@@ -297,15 +281,10 @@ def _synthetic_line(gross: Decimal, net: Decimal) -> RawInvoiceLine:
     vat_amount = gross - net
     return RawInvoiceLine(
         line_no=0,
-        sku=None,
-        description=None,
-        quantity=Decimal("1"),
         net=net,
         gross=gross,
         vat_rate=vat_rate,
         vat_amount=vat_amount,
-        position_type=None,
-        jtl_tax_key_id=None,
     )
 
 

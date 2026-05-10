@@ -1,14 +1,9 @@
 from decimal import Decimal
 
 from jtl2datev.core.models import RawInvoice, RawInvoiceLine, TaxDecision, TaxTreatment
+from jtl2datev.core.reference_data import EU_MEMBER_STATES
 
-EU_COUNTRIES: frozenset[str] = frozenset(
-    {
-        "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI",
-        "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT",
-        "NL", "PL", "PT", "RO", "SE", "SI", "SK",
-    }
-)
+EU_COUNTRIES: frozenset[str] = EU_MEMBER_STATES
 
 # Country-prefixes accepted as plausible VAT-IDs. EU + GB/NI/CH variants.
 _VAT_ID_PREFIXES: frozenset[str] = EU_COUNTRIES | frozenset({"GB", "XI", "CH"})

@@ -35,7 +35,6 @@ def _invoice(wh: str, dest: str, vat_id: str | None = None, platform_name: str |
 def _line(vat_rate: Decimal, gross: Decimal = Decimal("100"), net: Decimal = Decimal("84")) -> RawInvoiceLine:
     return RawInvoiceLine(
         line_no=1,
-        quantity=Decimal("1"),
         net=net,
         gross=gross,
         vat_amount=gross - net,

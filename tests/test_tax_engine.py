@@ -8,7 +8,6 @@ OWN_VAT = frozenset({"DE", "FR", "IT", "ES", "PL", "CZ", "GB"})
 
 _BASE_LINE = RawInvoiceLine(
     line_no=1,
-    quantity=Decimal("1"),
     net=Decimal("100.00"),
     gross=Decimal("119.00"),
     vat_amount=Decimal("19.00"),
@@ -55,7 +54,7 @@ def test_oss_b2c_de_to_fr() -> None:
 def test_igl_b2b_de_to_fr_with_vat_id() -> None:
     """Marketplace charged 0% AND customer has VAT-ID → B2B."""
     line = RawInvoiceLine(
-        line_no=1, quantity=Decimal("1"), net=Decimal("100"),
+        line_no=1, net=Decimal("100"),
         gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
     )
     inv = _invoice("DE", "FR", vat_id="FR12345678901")
@@ -85,7 +84,7 @@ def test_third_country_de_to_us() -> None:
 def test_marketplace_facilitator_when_gross_equals_net() -> None:
     """Amazon withheld VAT → gross == net → MARKETPLACE_FACILITATOR."""
     line = RawInvoiceLine(
-        line_no=0, quantity=Decimal("1"), net=Decimal("100"),
+        line_no=0, net=Decimal("100"),
         gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
     )
     inv = _invoice("PL", "GB", platform_name="Amazon.co.uk")
@@ -98,7 +97,7 @@ def test_marketplace_facilitator_when_gross_equals_net() -> None:
 def test_export_local_vat_when_amazon_uk_didnt_withhold() -> None:
     """Edge case: Amazon UK didn't withhold (gross != net) → we owe UK VAT."""
     line = RawInvoiceLine(
-        line_no=0, quantity=Decimal("1"), net=Decimal("20.64"),
+        line_no=0, net=Decimal("20.64"),
         gross=Decimal("24.77"), vat_amount=Decimal("4.13"), vat_rate=Decimal("20"),
     )
     inv = _invoice("ES", "GB", platform_name="Amazon.co.uk")
@@ -117,7 +116,7 @@ def test_unknown_warehouse_warns() -> None:
 def test_b2c_when_marketplace_charged_vat_with_junk_vat_id() -> None:
     """Spanish CIF 'B06800015' in vat_id field; marketplace charged VAT → B2C."""
     line = RawInvoiceLine(
-        line_no=0, quantity=Decimal("1"), net=Decimal("22"),
+        line_no=0, net=Decimal("22"),
         gross=Decimal("26.64"), vat_amount=Decimal("4.62"), vat_rate=Decimal("21"),
     )
     inv = RawInvoice(
@@ -138,7 +137,7 @@ def test_b2c_when_marketplace_charged_vat_with_junk_vat_id() -> None:
 def test_ch_marketplace_facilitator_gross_equals_net() -> None:
     """CH via Amazon with gross==net → MARKETPLACE_FACILITATOR (MWSTG Art. 20a)."""
     line = RawInvoiceLine(
-        line_no=1, quantity=Decimal("1"), net=Decimal("100"),
+        line_no=1, net=Decimal("100"),
         gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
     )
     inv = _invoice("DE", "CH", platform_name="Amazon.de")
@@ -152,7 +151,7 @@ def test_ch_marketplace_facilitator_gross_equals_net() -> None:
 def test_de_domestic_zero_vat_with_vat_id_not_rc() -> None:
     """DE→DE + vat_id + 0% must NOT be treated as RC; expected_rate=19 with note."""
     line = RawInvoiceLine(
-        line_no=1, quantity=Decimal("1"), net=Decimal("100"),
+        line_no=1, net=Decimal("100"),
         gross=Decimal("100"), vat_amount=Decimal("0"), vat_rate=Decimal("0"),
     )
     inv = _invoice("DE", "DE", vat_id="DE123456789")

@@ -4,19 +4,12 @@ import logging
 from dataclasses import dataclass
 
 from jtl2datev.core.models import RawInvoice, RawInvoiceLine, TaxDecision, TaxTreatment
+from jtl2datev.core.reference_data import EU_MEMBER_STATES
 
 logger = logging.getLogger(__name__)
 
-# EU member states (excluding DE) used in warehouse classification
-_EU_NON_DE: frozenset[str] = frozenset(
-    {
-        "AT", "BE", "BG", "CY", "CZ", "DK", "EE", "ES", "FI",
-        "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT",
-        "NL", "PL", "PT", "RO", "SE", "SI", "SK",
-    }
-)
-
-_EU_ALL: frozenset[str] = _EU_NON_DE | frozenset({"DE"})
+_EU_ALL: frozenset[str] = EU_MEMBER_STATES
+_EU_NON_DE: frozenset[str] = EU_MEMBER_STATES - {"DE"}
 
 # Helgoland is customs-free, treated like third-country for VAT purposes
 _HELGOLAND = "HLG"

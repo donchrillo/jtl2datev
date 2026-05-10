@@ -37,6 +37,7 @@
 | `core/verbringung_taxually.py` | ✓ | XLSX-Generator (20 Spalten, openpyxl), identisch zu Taxually-Format. B-Ware-Marker `(B-Ware)` in Description. |
 | `core/verbringung_pdf.py` | ✓ | Pro-Forma-PDF (reportlab): Header, Fachtext, VAT-IDs, Tabelle, Währungs-Summen. B-Ware-Artikel-Beschreibung mit Suffix. |
 | `core/exchange_rates.py` | ✓ | JSON-Storage (`data/exchange_rates.json`) + BMF-CSV-Importer. API: `load_rates`, `get_rate`, `set_rate`, `get_rates_for_period`, `fetch_bmf_csv`, `parse_bmf_csv`, `import_bmf_rates`. |
+| `core/reference_data.py` | ✓ | Stammdaten-Zentralisierung: EU_MEMBER_STATES, COUNTRY_CURRENCY, PLATFORM_COUNTRY, HARD_MIN_INVOICE_DATE. Single Source für länder-/währungs-/plattformübergreifende Constants. |
 | `core/archive.py` | ✓ | Generischer Archiv-Helfer für DATEV/DutyPay/Taxually/Verbringungen (Auto-Verzeichniserstellung, Timestamp-Naming). |
 | `cli.py` | ✓ | Click-Wrapper: `export`, `export-delta`, `export-dutypay`, `export-dutypay-delta`, `export-taxually`, `export-taxually-delta`, `export-verbringung`, `import-rates`, `mixed-vat-check`, `reconcile`. Error-Handling für DB/Validation. |
 

@@ -29,6 +29,7 @@ from reportlab.platypus import (
 )
 
 from jtl2datev.core.config import OWN_VAT_IDS_VERBRINGUNG
+from jtl2datev.core.reference_data import COUNTRY_CURRENCY as _COUNTRY_CURRENCY_ALL
 from jtl2datev.core.verbringung_parser import MovementRow
 from jtl2datev.core.verbringung_pricing import PricingResult
 
@@ -62,19 +63,7 @@ COUNTRY_NAMES_EN: dict[str, str] = {
     "NL": "Netherlands",
 }
 
-COUNTRY_CURRENCIES: dict[str, str] = {
-    "DE": "EUR",
-    "PL": "PLN",
-    "CZ": "CZK",
-    "IT": "EUR",
-    "ES": "EUR",
-    "FR": "EUR",
-    "SK": "EUR",
-    "GB": "GBP",
-    "AT": "EUR",
-    "BE": "EUR",
-    "NL": "EUR",
-}
+COUNTRY_CURRENCIES: dict[str, str] = _COUNTRY_CURRENCY_ALL
 
 _SENDER_LINES = [
     "ToCi Vertrieb OHG",

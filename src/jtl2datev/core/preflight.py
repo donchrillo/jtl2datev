@@ -11,9 +11,9 @@ from typing import Literal, NamedTuple
 
 from sqlalchemy import Engine, text
 
-logger = logging.getLogger(__name__)
+from jtl2datev.core.reference_data import HARD_MIN_INVOICE_DATE as _MIN_DATE
 
-_MIN_DATE = date(2024, 11, 1)
+logger = logging.getLogger(__name__)
 
 Source = Literal["jtl_own", "jtl_external", "jtl_credit_note"]
 

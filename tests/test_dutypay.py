@@ -50,15 +50,9 @@ def _line(
     gross: Decimal = Decimal("119.00"),
     net: Decimal = Decimal("100.00"),
     vat_rate: Decimal = Decimal("19"),
-    sku: str = "ART-001",
-    description: str = "Test Artikel",
-    quantity: Decimal = Decimal("1"),
 ) -> RawInvoiceLine:
     return RawInvoiceLine(
         line_no=1,
-        sku=sku,
-        description=description,
-        quantity=quantity,
         net=net,
         gross=gross,
         vat_amount=gross - net,
@@ -438,7 +432,7 @@ class TestHeader:
 
     def test_each_row_has_98_columns(self) -> None:
         # Multi-line invoice produces exactly 1 data row; all 98 columns must be present.
-        inv = _invoice(lines=(_line(), _line(sku="ART-002", description="Zweite Position")))
+        inv = _invoice(lines=(_line(), _line()))
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
             path = Path(f.name)
         write_dutypay_csv([inv], out_path=path, own_vat_ids=_OWN_VAT_IDS)
@@ -476,7 +470,7 @@ class TestHelpers:
 class TestWriteDutyPayCsv:
     def test_multi_invoice_pos_nr_increments(self) -> None:
         # inv1 has 2 lines but produces exactly 1 row (amounts aggregated)
-        inv1 = _invoice(invoice_no="R-001", lines=(_line(), _line(sku="X")))
+        inv1 = _invoice(invoice_no="R-001", lines=(_line(), _line()))
         inv2 = _invoice(invoice_no="R-002", lines=(_line(),))
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
             path = Path(f.name)
@@ -498,7 +492,7 @@ class TestWriteDutyPayCsv:
             invoice_no="R-003",
             lines=(
                 _line(gross=Decimal("119.00"), net=Decimal("100.00")),
-                _line(gross=Decimal("59.50"), net=Decimal("50.00"), sku="ART-002"),
+                _line(gross=Decimal("59.50"), net=Decimal("50.00")),
             ),
         )
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
@@ -550,7 +544,7 @@ class TestWriteDutyPayCsv:
     def test_rows_written_equals_invoices_processed(self) -> None:
         invoices = [
             _invoice(invoice_no="R-A", lines=(_line(),)),
-            _invoice(invoice_no="R-B", lines=(_line(), _line(sku="X"), _line(sku="Y"))),
+            _invoice(invoice_no="R-B", lines=(_line(), _line(), _line())),
             _invoice(invoice_no="R-C", lines=(_line(),)),
         ]
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:

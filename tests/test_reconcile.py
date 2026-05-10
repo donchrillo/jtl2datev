@@ -30,7 +30,6 @@ _BASE_INVOICE = RawInvoice(
 def _line(line_no: int, vat_rate: Decimal, vat_amount: Decimal) -> RawInvoiceLine:
     return RawInvoiceLine(
         line_no=line_no,
-        quantity=Decimal("1"),
         net=Decimal("100"),
         gross=Decimal("100") + vat_amount,
         vat_amount=vat_amount,

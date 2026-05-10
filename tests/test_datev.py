@@ -43,7 +43,6 @@ def _line(
 ) -> RawInvoiceLine:
     return RawInvoiceLine(
         line_no=1,
-        quantity=Decimal("1"),
         net=net,
         gross=gross,
         vat_amount=gross - net,
@@ -355,7 +354,6 @@ class TestSkipRules:
         """IGL B2B line with non-zero vat_amount triggers error skip."""
         bad_line = RawInvoiceLine(
             line_no=1,
-            quantity=Decimal("1"),
             net=Decimal("100"),
             gross=Decimal("119"),  # non-zero VAT despite B2B 0%
             vat_amount=Decimal("19"),
@@ -390,7 +388,7 @@ class TestSkipRules:
 
     def test_error_placeholder_has_marker_and_empty_gegenkonto(self) -> None:
         bad_line = RawInvoiceLine(
-            line_no=1, quantity=Decimal("1"),
+            line_no=1,
             net=Decimal("100"), gross=Decimal("119"),
             vat_amount=Decimal("19"), vat_rate=Decimal("0"),
         )

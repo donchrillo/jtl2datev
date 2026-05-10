@@ -2,6 +2,25 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint C Phase 1 (Architektur-Hygiene Quick Wins) umgesetzt
+
+**Stammdaten zentralisiert, RawInvoiceLine-Modell entschlackt:**
+
+**W-17** `core/reference_data.py` angelegt — Single Source for Constants:
+- `EU_MEMBER_STATES` (27 Länder, konsolidiert aus `EU_COUNTRIES` + `_EU_NON_DE`/`_EU_ALL`)
+- `COUNTRY_CURRENCY` (konsolidiert aus `dutypay._COUNTRY_CURRENCY` + `verbringung_pdf.COUNTRY_CURRENCIES`)
+- `PLATFORM_COUNTRY` (ehemals `_PLATFORM_COUNTRY` in `db_jtl.py`)
+- `HARD_MIN_INVOICE_DATE` (ehemals `_MIN_DATE` in `db_jtl.py` + `preflight.py`)
+Alle bestehenden Module konsumieren jetzt von dort; modul-lokale Re-Bindings erhalten (kein API-Bruch).
+
+**W-18** `RawInvoiceLine` Cleanup: 12 nie gelesene Felder entfernt (sku, description, quantity, product_group_id, position_type, weight, manufacturer, manufacturer_country, commodity_code, long_description, unit, transport_code). Behalten: line_no, net, gross, vat_amount, vat_rate, jtl_tax_key_id. `_synthetic_line` in `db_jtl.py` gekürzt, 7 Test-Fixture-Dateien angepasst.
+
+**W-20-light** `HARD_MIN_INVOICE_DATE` zentralisiert. `_DOMESTIC_MAP` / `_DEBITOR_BY_PAYMENT` / period-validity STANDARD_VAT_RATE bewusst nicht in Phase 1 (gehört später in Settings W-20-vollständig).
+
+**Tests:** 412 passed, 14 skipped. Keine Verhaltensänderungen, reine Struktur-Hygiene.
+
+---
+
 ## 2026-05-10 — Sprint B (Tax-Korrektheit) umgesetzt
 
 **Sechs kritische Tax-Punkte aus CONSOLIDATED.md Zeilen 94-106 implementiert:**

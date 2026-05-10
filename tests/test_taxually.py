@@ -32,7 +32,6 @@ def _line(
 ) -> RawInvoiceLine:
     return RawInvoiceLine(
         line_no=1,
-        quantity=Decimal("1"),
         gross=gross,
         net=net,
         vat_amount=vat_amount,

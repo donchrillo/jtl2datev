@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Iterable
 
 from jtl2datev.core.models import RawInvoice
-from jtl2datev.core.tax_engine import EU_COUNTRIES, STANDARD_VAT_RATE
+from jtl2datev.core.reference_data import COUNTRY_CURRENCY as _COUNTRY_CURRENCY, EU_MEMBER_STATES
+from jtl2datev.core.tax_engine import STANDARD_VAT_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -128,30 +129,7 @@ _MONTH_ABBR: tuple[str, ...] = (
     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
 )
 
-_EU_ALL = EU_COUNTRIES
-
-# ISO-2 country → ISO-4217 currency for all countries we handle.
-# EUR-zone members share one entry; non-EUR EU and third countries listed individually.
-_COUNTRY_CURRENCY: dict[str, str] = {
-    # EUR-zone (including HR since 2023)
-    **{c: "EUR" for c in (
-        "DE", "AT", "BE", "CY", "EE", "ES", "FI", "FR", "GR", "HR",
-        "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK",
-    )},
-    # Non-EUR EU members
-    "CZ": "CZK",
-    "DK": "DKK",
-    "HU": "HUF",
-    "PL": "PLN",
-    "RO": "RON",
-    "SE": "SEK",
-    "BG": "BGN",
-    # Non-EU third countries
-    "GB": "GBP",
-    "CH": "CHF",
-    "NO": "NOK",
-    "US": "USD",
-}
+_EU_ALL = EU_MEMBER_STATES
 
 
 def _warehouse_currency(country_iso: str, fallback: str) -> str:
