@@ -510,6 +510,75 @@ class TestBuchungstextWithCustomerName:
         assert len(rows[0][13]) <= 60
 
 
+class TestZeroAmountFilter:
+    """Probebuchungen mit Brutto-Summe = 0,00 € werden standardmäßig ausgefiltert."""
+
+    def _write(self, invoices: list[RawInvoice], *, keep_zero_amount: bool = False) -> ExportReport:
+        settings = _settings()
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            out = Path(tmp.name)
+        report = write_extf_buchungsstapel(
+            iter(invoices),
+            out_path=out,
+            settings=settings,
+            date_from=date(2026, 1, 1),
+            date_to=date(2026, 1, 31),
+            decisions_by_invoice=_decisions,
+            keep_zero_amount=keep_zero_amount,
+        )
+        out.unlink()
+        return report
+
+    def _zero_invoice(self, invoice_no: str) -> RawInvoice:
+        line = RawInvoiceLine(
+            line_no=1,
+            net=Decimal("0.00"),
+            gross=Decimal("0.00"),
+            vat_amount=Decimal("0.00"),
+            vat_rate=Decimal("19"),
+        )
+        inv = _invoice(invoice_no=invoice_no)
+        return RawInvoice(
+            source=inv.source,
+            invoice_no=inv.invoice_no,
+            invoice_date=inv.invoice_date,
+            currency=inv.currency,
+            currency_factor=inv.currency_factor,
+            warehouse_country=inv.warehouse_country,
+            ship_to=inv.ship_to,
+            bill_to=inv.bill_to,
+            is_credit_note=inv.is_credit_note,
+            lines=(line,),
+            jtl_external_order_no=inv.jtl_external_order_no,
+            marketplace_country=inv.marketplace_country,
+        )
+
+    def test_zero_amount_beleg_skipped_by_default(self) -> None:
+        zero = self._zero_invoice("SR202602155")
+        report = self._write([zero])
+        assert report.bookings_written == 0
+        assert report.skipped_zero_amount == 1
+
+    def test_keep_zero_amount_flag_disables_filter(self) -> None:
+        zero = self._zero_invoice("SR202602156")
+        report = self._write([zero], keep_zero_amount=True)
+        assert report.skipped_zero_amount == 0
+        # Buchungen können 0 sein (kein Fehler-Skip), aber der Filter greift nicht.
+
+    def test_normal_beleg_not_filtered(self) -> None:
+        normal = _invoice(invoice_no="R-DE-2026-001")
+        report = self._write([normal])
+        assert report.skipped_zero_amount == 0
+        assert report.bookings_written >= 1
+
+    def test_zero_and_normal_mixed(self) -> None:
+        zero = self._zero_invoice("SR202602155")
+        normal = _invoice(invoice_no="R-DE-2026-002")
+        report = self._write([zero, normal])
+        assert report.skipped_zero_amount == 1
+        assert report.bookings_written >= 1
+
+
 class TestForeignCurrency:
     """EXTF Buchungsstapel: WKZ/Kurs/Basis-Umsatz columns for non-EUR invoices."""
 

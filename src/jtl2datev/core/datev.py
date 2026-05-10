@@ -251,6 +251,7 @@ class ExportReport:
     bookings_written: int = 0
     skipped_error: int = 0
     skipped_unknown: int = 0
+    skipped_zero_amount: int = 0  # Probebuchungen mit Brutto-Summe = 0
     skipped_details: list[SkippedBeleg] = field(default_factory=list)
     diff_marked: int = 0  # bookings marked with "X" in Belegfeld 2 (compare-to mismatch)
 
@@ -428,6 +429,7 @@ def write_extf_buchungsstapel(
     decisions_by_invoice: Callable[[RawInvoice], list[LineDecision]],
     compare_map: dict[str, set[tuple[str, str]]] | None = None,
     audit: bool = False,
+    keep_zero_amount: bool = False,
 ) -> ExportReport:
     """Write EXTF Buchungsstapel CSV from invoices iterator."""
     report = ExportReport()
@@ -447,6 +449,22 @@ def write_extf_buchungsstapel(
             writer = csv.writer(fh, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
 
             for invoice in invoices:
+                # Probebuchungen-Filter: Belege mit Brutto-Summe = 0,00 €
+                # (z.B. SR202602155/156). Filter sitzt nur im DATEV-Pfad —
+                # DutyPay/Taxually behalten die Belege für Reconcile-Vollständigkeit.
+                if not keep_zero_amount:
+                    total_gross = sum(
+                        (line.gross for line in invoice.lines),
+                        Decimal("0"),
+                    )
+                    if total_gross == 0:
+                        report.skipped_zero_amount += 1
+                        logger.debug(
+                            "DATEV export: skipping zero-amount beleg %s",
+                            invoice.invoice_no,
+                        )
+                        continue
+
                 line_decisions = decisions_by_invoice(invoice)
 
                 debitor = map_to_debitor_account(
@@ -580,10 +598,11 @@ def write_extf_buchungsstapel(
         raise
 
     logger.info(
-        "DATEV export complete: %d bookings written, %d error-skipped, %d unknown-skipped",
+        "DATEV export complete: %d bookings written, %d error-skipped, %d unknown-skipped, %d zero-amount-skipped",
         report.bookings_written,
         report.skipped_error,
         report.skipped_unknown,
+        report.skipped_zero_amount,
     )
     return report
 

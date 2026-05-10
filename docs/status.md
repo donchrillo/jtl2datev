@@ -2,6 +2,19 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Probebuchungen-Filter (next-session Punkt 3)
+
+**Belege mit Brutto-Summe = 0,00 € werden im DATEV-Export ausgefiltert** (z.B. `SR202602155`, `SR202602156`). Filter sitzt **nur im DATEV-Pfad** — DutyPay/Taxually behalten die Belege weiterhin für Reconcile-Vollständigkeit (Engine-Counts bleiben unverändert).
+
+**Code:**
+- `core/datev.py`: `ExportReport.skipped_zero_amount` Feld; `write_extf_buchungsstapel(..., keep_zero_amount=False)` Parameter; Filter direkt am Loop-Anfang via `sum(line.gross for line in invoice.lines) == 0`.
+- `cli.py`: `--keep-zero-amount` Flag bei `export` und `export-delta`. Standard: filtern. Für Audit-Trail mit `--keep-zero-amount` deaktivieren.
+- CLI-Output zeigt neue Zeile `Belege geskippt (0,00 €): N`.
+
+**Tests:** 431 passed (+4 neue: default-skip, opt-out-flag, mixed-mit-normalen, normaler Beleg-Pass), 14 skipped.
+
+---
+
 ## 2026-05-10 — Temu-Filter entfernt (next-session Punkt 7)
 
 User-Bestätigung: keine neuen Temu-Belege mehr seit Januar 2026. Der Pilot war Ende 2025 vom Steuerberater zurückgerollt worden, der DATEV-Filter (`cExterneAuftragsnummer LIKE 'PO%'` → skip) war seitdem aktiv.

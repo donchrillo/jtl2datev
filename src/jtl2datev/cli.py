@@ -89,6 +89,13 @@ def version() -> None:
     "in Spalte 'Beleglink' (vor allen Beleginfo-Feldern). Vor Übergabe an "
     "den Steuerberater wieder entfernen.",
 )
+@click.option(
+    "--keep-zero-amount",
+    is_flag=True,
+    default=False,
+    help="Belege mit Brutto-Summe = 0,00 € (Probebuchungen) NICHT ausfiltern. "
+    "Standard: filtern. Für vollständigen Audit-Trail aktivieren.",
+)
 def export_cmd(
     month_str: str | None,
     date_from: dt.datetime | None,
@@ -96,6 +103,7 @@ def export_cmd(
     out_path: Path | None,
     compare_to: Path | None,
     audit: bool,
+    keep_zero_amount: bool,
 ) -> None:
     """Exportiert Rechnungen aus JTL als DATEV-CSV."""
     from jtl2datev.core.config import Settings
@@ -140,11 +148,13 @@ def export_cmd(
                 decisions_by_invoice=decisions,
                 compare_map=compare_map,
                 audit=audit,
+                keep_zero_amount=keep_zero_amount,
             )
         click.echo(f"DATEV-Export geschrieben: {effective_out}")
         click.echo(f"  Buchungen: {report.bookings_written}")
         click.echo(f"  Belege geskippt (Fehler):    {report.skipped_error}")
         click.echo(f"  Belege geskippt (unbekannt): {report.skipped_unknown}")
+        click.echo(f"  Belege geskippt (0,00 €):    {report.skipped_zero_amount}")
         if compare_map is not None:
             click.echo(f"  Abweichungen markiert (X):   {report.diff_marked}")
 
@@ -552,6 +562,13 @@ def export_dutypay_delta_cmd(
     default=False,
     help="Audit-Modus: schreibt das Engine-Regel-Tag in Spalte 'Beleglink'.",
 )
+@click.option(
+    "--keep-zero-amount",
+    is_flag=True,
+    default=False,
+    help="Belege mit Brutto-Summe = 0,00 € (Probebuchungen) NICHT ausfiltern. "
+    "Standard: filtern.",
+)
 def export_delta_cmd(
     month_str: str | None,
     date_from: dt.datetime | None,
@@ -560,6 +577,7 @@ def export_delta_cmd(
     out_path: Path | None,
     compare_to: Path | None,
     audit: bool,
+    keep_zero_amount: bool,
 ) -> None:
     """Berechnet DATEV-Delta-Export zwischen aktuellem JTL-Stand und letztem Vollexport.
 
@@ -640,6 +658,7 @@ def export_delta_cmd(
                 decisions_by_invoice=decisions,
                 compare_map=compare_map,
                 audit=audit,
+                keep_zero_amount=keep_zero_amount,
             )
 
         if use_archive:
