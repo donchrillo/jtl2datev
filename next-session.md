@@ -50,22 +50,26 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 8. **SK-Departure-Bewegungen Taxually-Klärung (User):** SK→CZ/DE/PL FC_TRANSFERs werden aktuell mit leerer Departure-VAT-ID exportiert. Steuerlich ordnen die Finanzämter diese bisher Amazon zu (nicht uns), Pro-Forma-PDFs werden weiterhin als Beleg erzeugt. Offen: Verarbeitet Taxually XLSX-Zeilen mit leerer SK-VAT überhaupt? Falls nein, alternative Strategien: (a) SK-Departure-Zeilen aus dem XLSX rausfiltern (PDFs trotzdem behalten), (b) komplett weglassen. Vor Q2-Meldung klären.
 
-## Offene Review-Punkte (Code-Lücken)
+## Bei ERP-/Frontend-Migration angehen
+
+Diese Tasks ergeben erst Sinn, wenn das neue System (FastAPI + React 19) konkret aufgebaut wird — Design hängt vom realen Deployment-Kontext ab (Auth-Schema, Storage-Backend, Frontend-Anforderungen).
+
+- **FastAPI-Auth + CORS** — API-Key/OAuth2 + CORS-Whitelist für React-Origins.
+- **FastAPI-Verbringungs-Endpoint** — Pydantic-Body mit `exchange_rates` + Multipart-Upload des Amazon-Reports (oder Pre-Signed-URL).
+- **FastAPI-Delta-Endpoints** — Baseline-Auflösung per Body/Upload, Storage-Backend (S3 o.ä.) statt lokales `exports/`.
+- **W-20-Settings-Override** — Konten-Mappings (`DOMESTIC_ACCOUNT_BY_WAREHOUSE`, `DEBITOR_BY_PAYMENT`) aus Settings/DB pro Mandant statt Modul-Konstanten. Notwendig sobald Multi-Mandanten-Betrieb.
+
+## Sonstige offene Code-Lücken
 
 - **W-20-Period-Validity** (deferred bis Re-Exports älterer Monate nötig werden): `STANDARD_VAT_RATE` von `dict[country, rate]` auf `dict[country, list[(from_date, rate)]]` umstellen, `vat_rate_for(country, on_date)` echte Period-Logik geben. Aufwand >4h. Aktuell wird `on_date` ignoriert.
-- **W-20-Settings-Override** (deferred bis ERP-Multi-Mandanten): Konten-Mappings (`DOMESTIC_ACCOUNT_BY_WAREHOUSE`, `DEBITOR_BY_PAYMENT`) sind heute Modul-Konstanten. Für Multi-Mandanten-Setup müssten sie aus Settings/DB pro Mandant kommen.
 
-## Phase 2 (Erweiterungen)
+## History (erledigt 2026-05-10)
 
-- **FastAPI-Auth + CORS**: aktuelles Skeleton hat keine Auth (TODO im Code) und kein CORS (kommt mit React-Frontend). Vor Produktiv-Deployment: API-Key oder OAuth2 + CORS-Whitelist konfigurieren.
-- **Verbringungs-Endpoint**: braucht Pydantic-Body mit `exchange_rates` als Input (Service ist pure, FastAPI-Route würde 400 mit `missing_currencies` zurückgeben). ~1–2h.
-- **Delta-Endpoints**: Baseline-Auflösung müsste per Body oder Query (Pfad zur Datei) angegeben werden. Bei FastAPI-Deployment in der Cloud kommt Storage-Backend statt lokales `exports/`-Verzeichnis dazu. Eigener Sprint.
-
-(W-16-A 2026-05-10: CLI → `cli/`-Package mit 9 Modulen.)
-(W-16-B 2026-05-10: `core/services/` mit DATEV/DutyPay/Taxually-Services + Delta-Varianten.)
-(W-16-B-Rest 2026-05-10: Verbringung/Reconcile/Mixed-VAT zusätzlich als Services. Alle 8 Exporter/Tools sind jetzt service-fähig.)
-(FastAPI-Skeleton 2026-05-10: `src/jtl2datev/api/` mit 5 Endpoints — DATEV/DutyPay/Taxually-Export, Reconcile-Report, Mixed-VAT-Check. Lifespan-Engine, typed Exception-Handlers, OpenAPI/Swagger automatisch unter `/docs`.)
-(W-19 wurde durch B-9 abgedeckt — `ArticlePricingRepository` lebt jetzt in `core/repositories.py` mit JTL-Implementierung in `core/db_jtl.py`.)
+- W-16-A: CLI → `cli/`-Package mit 9 Modulen.
+- W-16-B: `core/services/` mit DATEV/DutyPay/Taxually-Services + Delta-Varianten.
+- W-16-B-Rest: Verbringung/Reconcile/Mixed-VAT zusätzlich als Services. Alle 8 Exporter/Tools sind service-fähig.
+- FastAPI-Skeleton: `src/jtl2datev/api/` mit 5 Endpoints (DATEV/DutyPay/Taxually-Export, Reconcile-Report, Mixed-VAT-Check). Lifespan-Engine, typed Exception-Handlers, OpenAPI/Swagger unter `/docs`.
+- W-19 durch B-9 abgedeckt — `ArticlePricingRepository` in `core/repositories.py` + `core/db_jtl.py`.
 
 ## Notizen für Orchestrator
 
