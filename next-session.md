@@ -57,7 +57,7 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 ## Phase 2 (Erweiterungen)
 
-- **W-16** CLI-Umstrukturierung + Service-Layer: `cli.py` → `cli/`-Package (Sub-Commands pro Modul) + `core/services/` als Abstraktions-Schicht über Repository + Tax-Engine + Export. 1–2 Tage, eigene Phase.
+- **W-16-B (Service-Layer)** offen: `core/services/`-Schicht über Repository + Tax-Engine + Export. CLI-Commands würden zu sehr dünnen Wrappern. 1 Tag. **Hinweis:** W-16-A (CLI → `cli/`-Package, 1.591-Zeilen-Datei in 8 Module gesplittet) wurde 2026-05-10 umgesetzt.
 
 (W-19 wurde durch B-9 abgedeckt — `ArticlePricingRepository` lebt jetzt in `core/repositories.py` mit JTL-Implementierung in `core/db_jtl.py`.)
 

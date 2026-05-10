@@ -365,7 +365,7 @@ def test_export_verbringung_full_run_with_mock_db(
 
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
-         patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
+         patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value=mock_rates):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -419,7 +419,7 @@ def test_export_verbringung_missing_ek_csv_created(
 
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
-         patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
+         patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value=mock_rates):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -466,7 +466,7 @@ def test_export_verbringung_strict_missing_rate_exits(
     # No rates available → PLN missing → strict should abort
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
-         patch("jtl2datev.cli.get_rates_for_period", return_value={}):
+         patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value={}):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -513,9 +513,9 @@ def test_export_verbringung_interactive_prompt_saves_rate(
 
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
-         patch("jtl2datev.cli.get_rates_for_period", return_value={}), \
+         patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value={}), \
          patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.DEFAULT_RATES_PATH", rates_path):
+         patch("jtl2datev.cli.export_verbringung.DEFAULT_RATES_PATH", rates_path):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -562,7 +562,7 @@ def test_export_verbringung_interactive_empty_input_aborts(
 
     with patch("jtl2datev.core.db_jtl.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
-         patch("jtl2datev.cli.get_rates_for_period", return_value={}):
+         patch("jtl2datev.cli.export_verbringung.get_rates_for_period", return_value={}):
         mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
@@ -608,7 +608,7 @@ def test_import_rates_with_local_csv(tmp_path: Path) -> None:
     csv_file.write_bytes(_SAMPLE_BMF_CSV)
 
     with patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.DEFAULT_RATES_PATH", rates_path):
+         patch("jtl2datev.cli.import_rates.DEFAULT_RATES_PATH", rates_path):
         result = CliRunner().invoke(
             main,
             ["import-rates", "--year", "2026", "--csv", str(csv_file)],
@@ -627,7 +627,7 @@ def test_import_rates_summary_line(tmp_path: Path) -> None:
     csv_file.write_bytes(_SAMPLE_BMF_CSV)
 
     with patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
-         patch("jtl2datev.cli.DEFAULT_RATES_PATH", rates_path):
+         patch("jtl2datev.cli.import_rates.DEFAULT_RATES_PATH", rates_path):
         result = CliRunner().invoke(
             main,
             ["import-rates", "--csv", str(csv_file)],
@@ -644,26 +644,26 @@ def test_import_rates_summary_line(tmp_path: Path) -> None:
 
 def test_parse_month_single_digit_fails() -> None:
     """'2026-4' (single-digit month) must be rejected."""
-    from jtl2datev.cli import _parse_month
+    from jtl2datev.cli._common import _parse_month
 
     with pytest.raises(SystemExit):
         _parse_month("2026-4")
 
 
 def test_parse_month_valid_returns_tuple() -> None:
-    from jtl2datev.cli import _parse_month
+    from jtl2datev.cli._common import _parse_month
 
     assert _parse_month("2026-04") == (2026, 4)
 
 
 def test_parse_month_plain_string_fails() -> None:
-    from jtl2datev.cli import _parse_month
+    from jtl2datev.cli._common import _parse_month
 
     with pytest.raises(SystemExit):
         _parse_month("January")
 
 
 def test_parse_month_december_valid() -> None:
-    from jtl2datev.cli import _parse_month
+    from jtl2datev.cli._common import _parse_month
 
     assert _parse_month("2026-12") == (2026, 12)

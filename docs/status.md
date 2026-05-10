@@ -2,6 +2,38 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — W-16-A (CLI-Package-Split) umgesetzt
+
+**`src/jtl2datev/cli.py` (1.591 Zeilen) in `src/jtl2datev/cli/`-Package gesplittet:**
+
+```
+cli/__init__.py              # main-Group + version-Command + Sub-Module-Imports (52 Zeilen)
+cli/_common.py               # _MONTH_RE, _parse_month, _month_date_range, _resolve_date_range (50 Zeilen)
+cli/export_datev.py          # export, export-delta (~330 Zeilen)
+cli/export_dutypay.py        # export-dutypay, export-dutypay-delta (~290 Zeilen)
+cli/export_taxually.py       # export-taxually, export-taxually-delta (~240 Zeilen)
+cli/export_verbringung.py    # export-verbringung (~280 Zeilen)
+cli/reconcile.py             # reconcile + _write_mismatches_csv (~165 Zeilen)
+cli/mixed_vat_check.py       # mixed-vat-check + _write_mixed_vat_csv (~135 Zeilen)
+cli/import_rates.py          # import-rates (~70 Zeilen)
+```
+
+**Registration via Side-Effect-Imports:** `cli/__init__.py` importiert alle Sub-Module am Ende; jedes Sub-Modul macht `from jtl2datev.cli import main` und registriert seine Commands via `@main.command(...)`. Click-Standard-Pattern.
+
+**Entry-Point unverändert:** `pyproject.toml` `jtl2datev = "jtl2datev.cli:main"` greift auf `cli/__init__.py:main` (Package statt Modul, gleiche Syntax).
+
+**Tests:** 5 Test-Patches umgehängt:
+- `jtl2datev.cli.get_rates_for_period` → `jtl2datev.cli.export_verbringung.get_rates_for_period`
+- `jtl2datev.cli.DEFAULT_RATES_PATH` (verbringung-Kontext) → `jtl2datev.cli.export_verbringung.DEFAULT_RATES_PATH`
+- `jtl2datev.cli.DEFAULT_RATES_PATH` (import-rates-Kontext) → `jtl2datev.cli.import_rates.DEFAULT_RATES_PATH`
+- 4× `from jtl2datev.cli import _parse_month` → `from jtl2datev.cli._common import _parse_month`
+
+**Smoke-Test:** `jtl2datev --help` listet alle 11 Commands korrekt. **Tests:** 431 passed, 14 skipped.
+
+**Bewusst nicht umgesetzt:** W-16-B (Service-Layer in `core/services/`). Reine CLI-Aufteilung ist eigenständig wertvoll; Service-Layer ist eine separate Architektur-Entscheidung und eigener Sprint.
+
+---
+
 ## 2026-05-10 — Probebuchungen-Filter (next-session Punkt 3)
 
 **Belege mit Brutto-Summe = 0,00 € werden im DATEV-Export ausgefiltert** (z.B. `SR202602155`, `SR202602156`). Filter sitzt **nur im DATEV-Pfad** — DutyPay/Taxually behalten die Belege weiterhin für Reconcile-Vollständigkeit (Engine-Counts bleiben unverändert).
