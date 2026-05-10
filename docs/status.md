@@ -2,6 +2,31 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — W-16-B-Rest (Services für Verbringung/Reconcile/Mixed-VAT) umgesetzt
+
+**Vervollständigt den Service-Layer:** alle 8 Exporter/Tools sind jetzt FastAPI-tauglich.
+
+**Neue Service-Module:**
+- `core/services/reconcile_service.py`: `ReconcileRequest`/`Result` — reine Repository-Delegation an `run_reconcile`.
+- `core/services/mixed_vat_service.py`: `MixedVatCheckRequest`/`Result` — direkte Repository-Delegation.
+- `core/services/verbringung_service.py`: komplexer Service mit `MissingExchangeRatesError`, `required_currencies_for(movements)`-Helper und `export_verbringung(req)`.
+
+**Verbringung-Design-Entscheidung (Pure-Service-Pattern):**
+Service nimmt **vorab geparste Movements** + **komplette Wechselkurs-Tabelle** als Input. Wenn Kurse fehlen, wirft er `MissingExchangeRatesError(missing_currencies)` upfront. **Interaktive Prompts bleiben im CLI** — der CLI-Wrapper parst zuerst den Report, prompt-loop für fehlende Kurse, dann Service-Aufruf mit komplettem Kurs-Dict. FastAPI-Route würde stattdessen 400-Response mit Liste der fehlenden Währungen zurückgeben (oder Kurse aus dem Request-Body annehmen).
+
+**XLSX/PDF/CSV-Generierung im Service:** `format_verbringung_xlsx`, `generate_proforma_pdfs`, sowie `_write_missing_ek_csv` und `_write_bware_summary_csv` (private Helper für Optionalfelder `out_missing_ek` und `out_bware_summary` — `None` = nicht schreiben).
+
+**CLI-Refactor:** `cli/reconcile.py`, `cli/mixed_vat_check.py`, `cli/export_verbringung.py` rufen jetzt die jeweiligen Services und kümmern sich nur noch um:
+- Argument-Parsing (Click)
+- Wechselkurs-Prompt-Loop (verbringung) bzw. Konsolen-Tabellen (reconcile/mixed-vat)
+- Engine-Lifecycle (`managed_engine`)
+- Echo-Formatierung
+- Exception → `SystemExit`-Mapping
+
+**Tests:** 431 passed (Verhalten 1:1 erhalten), 14 skipped. ruff clean.
+
+---
+
 ## 2026-05-10 — W-16-B (Service-Layer für DATEV/DutyPay/Taxually) umgesetzt
 
 **Architektur-Schicht:** neue `src/jtl2datev/core/services/`-Modul-Familie als Application-Layer zwischen CLI/API (Presentation) und Domain/Infrastructure. Strikte Schichten-Trennung im Hinblick auf das geplante FastAPI-React-Frontend.

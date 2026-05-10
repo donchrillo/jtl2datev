@@ -1,4 +1,4 @@
-"""Reconcile-Command: vergleicht JTL-Steuerdaten mit eigener Engine."""
+"""Reconcile-Command: dünner Wrapper über reconcile_service."""
 from __future__ import annotations
 
 import csv
@@ -12,37 +12,17 @@ from jtl2datev.cli._common import _resolve_date_range
 
 
 @main.command("reconcile")
-@click.option(
-    "--month",
-    "month_str",
-    required=False,
-    default=None,
-    metavar="YYYY-MM",
-    help="Monat des Reconcile, z.B. 2026-01.",
-)
-@click.option(
-    "--from",
-    "date_from",
-    required=False,
-    default=None,
-    type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Startdatum (inkl.), z.B. 2026-01-01.",
-)
-@click.option(
-    "--to",
-    "date_to",
-    required=False,
-    default=None,
-    type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Enddatum (inkl.), z.B. 2026-01-31.",
-)
-@click.option(
-    "--out-mismatches",
-    "out_mismatches",
-    default=None,
-    type=click.Path(path_type=Path),
-    help="Optional: alle Mismatches als CSV schreiben.",
-)
+@click.option("--month", "month_str", required=False, default=None, metavar="YYYY-MM",
+              help="Monat des Reconcile, z.B. 2026-01.")
+@click.option("--from", "date_from", required=False, default=None,
+              type=click.DateTime(formats=["%Y-%m-%d"]),
+              help="Startdatum (inkl.), z.B. 2026-01-01.")
+@click.option("--to", "date_to", required=False, default=None,
+              type=click.DateTime(formats=["%Y-%m-%d"]),
+              help="Enddatum (inkl.), z.B. 2026-01-31.")
+@click.option("--out-mismatches", "out_mismatches", default=None,
+              type=click.Path(path_type=Path),
+              help="Optional: alle Mismatches als CSV schreiben.")
 def reconcile_cmd(
     month_str: str | None,
     date_from: dt.datetime | None,
@@ -52,7 +32,10 @@ def reconcile_cmd(
     """Vergleicht JTL-Steuerdaten mit eigener Engine und gibt Mismatch-Report aus."""
     from jtl2datev.core.config import Settings
     from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
-    from jtl2datev.core.pipeline import run_reconcile
+    from jtl2datev.core.services.reconcile_service import (
+        ReconcileRequest,
+        reconcile,
+    )
 
     df, dt_ = _resolve_date_range(date_from, date_to, month_str)
 
@@ -60,18 +43,21 @@ def reconcile_cmd(
 
     try:
         with managed_engine(settings) as engine:
-            repo = JtlInvoiceRepository(engine)
-            invoices = repo.fetch_invoices(date_from=df, date_to=dt_)
             sample_limit = 1_000_000 if out_mismatches is not None else 20
-            report = run_reconcile(
-                invoices,
-                own_vat_countries=settings.own_vat_countries,
-                sample_limit=sample_limit,
+            result = reconcile(
+                ReconcileRequest(
+                    repo=JtlInvoiceRepository(engine),
+                    settings=settings,
+                    date_from=df,
+                    date_to=dt_,
+                    sample_limit=sample_limit,
+                )
             )
     except Exception as exc:
         click.echo(f"Fehler: {exc}")
         raise SystemExit(1) from exc
 
+    report = result.report
     total_mismatches = sum(report.mismatches_by_severity.values())
 
     click.echo("")
@@ -127,40 +113,25 @@ def reconcile_cmd(
         click.echo("")
 
     if out_mismatches is not None:
-        _write_mismatches_csv(report.sample_mismatches, out_mismatches, report)
+        _write_mismatches_csv(report, out_mismatches)
         click.echo(f"Mismatches geschrieben: {out_mismatches}")
 
 
-def _write_mismatches_csv(
-    samples: list,
-    path: Path,
-    report: "object",  # ReconcileReport — avoid import at module level
-) -> None:
-    from jtl2datev.core.pipeline import ReconcileReport
-
-    assert isinstance(report, ReconcileReport)
-
+def _write_mismatches_csv(report, path: Path) -> None:  # type: ignore[no-untyped-def]
     fieldnames = [
-        "invoice_no",
-        "external_order_no",
-        "line_no",
-        "severity",
-        "field",
-        "jtl_value",
-        "engine_value",
+        "invoice_no", "external_order_no", "line_no",
+        "severity", "field", "jtl_value", "engine_value",
     ]
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
         for mm in report.sample_mismatches:
-            writer.writerow(
-                {
-                    "invoice_no": mm.invoice_no,
-                    "external_order_no": mm.external_order_no or "",
-                    "line_no": mm.line_no,
-                    "severity": mm.severity,
-                    "field": mm.field,
-                    "jtl_value": mm.jtl_value,
-                    "engine_value": mm.engine_value,
-                }
-            )
+            writer.writerow({
+                "invoice_no": mm.invoice_no,
+                "external_order_no": mm.external_order_no or "",
+                "line_no": mm.line_no,
+                "severity": mm.severity,
+                "field": mm.field,
+                "jtl_value": mm.jtl_value,
+                "engine_value": mm.engine_value,
+            })
