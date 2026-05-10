@@ -106,14 +106,24 @@ def fetch_bmf_csv(year: int, timeout: int = 30) -> bytes:
         return resp.read()
 
 
+def _decode_bmf_csv(content: bytes) -> str:
+    """Try UTF-8-sig, UTF-8, then ISO-8859-1. Raises ValueError on all failures."""
+    for enc in ("utf-8-sig", "utf-8", "iso-8859-1"):
+        try:
+            return content.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("BMF-CSV ließ sich mit utf-8/iso-8859-1 nicht dekodieren")
+
+
 def parse_bmf_csv(content: bytes) -> dict[str, dict[str, str]]:
     """Parses BMF CSV bytes.
 
     Returns {period: {currency: value_str}} for all non-empty cells.
     Period format: 'YYYY-MM' (year extracted from title line, month from header).
     """
-    text = content.decode("iso-8859-1")
-    lines = [line.rstrip("\r") for line in text.split("\n")]
+    decoded = _decode_bmf_csv(content)
+    lines = [line.rstrip("\r") for line in decoded.split("\n")]
 
     # First non-empty line: title — extract year
     title_line = next((l for l in lines if l.strip()), "")
@@ -148,6 +158,12 @@ def parse_bmf_csv(content: bytes) -> dict[str, dict[str, str]]:
         # Try to match a known month name
         month_num = _parse_month_name(normalized)
         month_indices.append(month_num)
+
+    recognized_months = sum(1 for m in month_indices if m != 0)
+    if recognized_months < 4:
+        raise ValueError(
+            f"BMF-CSV scheint Layout geändert zu haben — nur {recognized_months} Monatsspalten gefunden"
+        )
 
     result: dict[str, dict[str, str]] = {}
 

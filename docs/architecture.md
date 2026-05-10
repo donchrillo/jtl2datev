@@ -99,6 +99,26 @@ Auto-Archive-Race-Prevention:
 
 Effekt: Kein korrupter CSV/XLSX möglich bei Strg+C, parallelen Läufen oder Festplattenfehler-Fehler.
 
+### DB-Ressourcen-Management: `managed_engine()` Context-Manager
+
+Alle 8 CLI-Commands verwenden `managed_engine(settings)` Context-Manager:
+```python
+with managed_engine(settings) as engine:
+    repo = JtlInvoiceRepository(engine)
+    # Logik
+    # Garantierte engine.dispose() bei Exit (auch Exception)
+```
+
+Effekt: Verbindungs-Pool-Cleanup, keine Ressourcen-Leaks bei sequentiellen Läufen.
+
+### Encoding-Robustheit: File-Import
+
+Externe CSV/TSV-Dateien (BMF-Wechselkurse, Amazon-Transactional-Reports) mit Encoding-Detection:
+- **BMF-CSV** (`core/exchange_rates.py`): utf-8-sig → utf-8 → iso-8859-1 Fallback
+- **Amazon-TSV** (`core/verbringung_parser.py`): utf-8-sig → utf-8 → utf-16 → utf-16-le → cp1252 Fallback
+
+Jeder Parser hat `_detect_encoding()` Helper.
+
 ### Steuer-Engine: Eingaben
 
 Die Engine bekommt nur Fakten, **nie** JTLs Steuerentscheidung als Input

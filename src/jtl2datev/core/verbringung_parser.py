@@ -1,4 +1,5 @@
 import csv
+import io
 import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -55,11 +56,25 @@ def _parse_decimal(raw: str) -> Decimal | None:
         return None
 
 
+def _read_amazon_report(path: Path) -> str:
+    """Detect encoding of an Amazon movement report TSV. Tries common encodings."""
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "utf-8", "utf-16", "utf-16-le", "cp1252"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(
+        f"Amazon-Report {path}: kein bekanntes Encoding (utf-8/utf-16/cp1252) passte"
+    )
+
+
 def parse_amazon_report(path: Path) -> list[MovementRow]:
     rows: list[MovementRow] = []
     skipped = 0
 
-    with open(path, encoding="utf-8-sig", newline="") as fh:
+    text = _read_amazon_report(path)
+    with io.StringIO(text) as fh:
         reader = csv.DictReader(fh, delimiter="\t")
         for raw in reader:
             tt = raw.get("TRANSACTION_TYPE", "").strip()

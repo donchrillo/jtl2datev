@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -366,7 +366,7 @@ def test_export_verbringung_full_run_with_mock_db(
     with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
-        mock_engine.return_value = None
+        mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
             main,
@@ -420,7 +420,7 @@ def test_export_verbringung_missing_ek_csv_created(
     with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value=mock_rates):
-        mock_engine.return_value = None
+        mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
             main,
@@ -467,7 +467,7 @@ def test_export_verbringung_strict_missing_rate_exits(
     with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value={}):
-        mock_engine.return_value = None
+        mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
             main,
@@ -516,7 +516,7 @@ def test_export_verbringung_interactive_prompt_saves_rate(
          patch("jtl2datev.cli.get_rates_for_period", return_value={}), \
          patch("jtl2datev.core.exchange_rates.DEFAULT_RATES_PATH", rates_path), \
          patch("jtl2datev.cli.DEFAULT_RATES_PATH", rates_path):
-        mock_engine.return_value = None
+        mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
             main,
@@ -563,7 +563,7 @@ def test_export_verbringung_interactive_empty_input_aborts(
     with patch("jtl2datev.core.verbringung_pricing.lookup_prices", return_value=mock_pricing), \
          patch("jtl2datev.core.db_jtl.make_engine") as mock_engine, \
          patch("jtl2datev.cli.get_rates_for_period", return_value={}):
-        mock_engine.return_value = None
+        mock_engine.return_value = MagicMock()
 
         result = CliRunner().invoke(
             main,
@@ -586,9 +586,9 @@ def test_export_verbringung_interactive_empty_input_aborts(
 
 _SAMPLE_BMF_CSV = (
     "Monatlich fortgeschriebene Übersicht der Umsatzsteuer-Umrechnungskurse 2026\r\n"
-    "Land;Währung;Januar[1];Februar [2];März [3]\r\n"
-    "Polen;1 Euro;4,2127 PLN;4,2184 PLN;4,2715 PLN\r\n"
-    "Tschechien;1 Euro;24,278 CZK;24,260 CZK;\r\n"
+    "Land;Währung;Januar[1];Februar [2];März [3];April [4]\r\n"
+    "Polen;1 Euro;4,2127 PLN;4,2184 PLN;4,2715 PLN;\r\n"
+    "Tschechien;1 Euro;24,278 CZK;24,260 CZK;;\r\n"
 ).encode("iso-8859-1")
 
 
@@ -635,3 +635,35 @@ def test_import_rates_summary_line(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Import abgeschlossen" in result.output
+
+
+# ---------------------------------------------------------------------------
+# W-14: _parse_month strict regex
+# ---------------------------------------------------------------------------
+
+
+def test_parse_month_single_digit_fails() -> None:
+    """'2026-4' (single-digit month) must be rejected."""
+    from jtl2datev.cli import _parse_month
+
+    with pytest.raises(SystemExit):
+        _parse_month("2026-4")
+
+
+def test_parse_month_valid_returns_tuple() -> None:
+    from jtl2datev.cli import _parse_month
+
+    assert _parse_month("2026-04") == (2026, 4)
+
+
+def test_parse_month_plain_string_fails() -> None:
+    from jtl2datev.cli import _parse_month
+
+    with pytest.raises(SystemExit):
+        _parse_month("January")
+
+
+def test_parse_month_december_valid() -> None:
+    from jtl2datev.cli import _parse_month
+
+    assert _parse_month("2026-12") == (2026, 12)

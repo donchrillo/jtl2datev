@@ -1,5 +1,6 @@
 import logging
 import re
+from contextlib import contextmanager
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Iterator
@@ -652,3 +653,12 @@ def make_engine(settings: Settings) -> Engine:
         pool_recycle=1800,
         connect_args={"timeout": 10},
     )
+
+
+@contextmanager
+def managed_engine(settings: Settings):  # type: ignore[return]
+    engine = make_engine(settings)
+    try:
+        yield engine
+    finally:
+        engine.dispose()

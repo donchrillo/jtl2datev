@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from jtl2datev.core.exchange_rates import (
+    _decode_bmf_csv,
     get_rate,
     get_rates_for_period,
     import_bmf_rates,
@@ -200,3 +201,44 @@ class TestImportBmfRates:
         with caplog.at_level(logging.WARNING, logger="jtl2datev.core.exchange_rates"):
             import_bmf_rates(2026, path=p, content=_SAMPLE_CSV_BYTES)
         assert any("manual" in r.message.lower() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# W-11: Encoding detection + sanity check
+# ---------------------------------------------------------------------------
+
+_SAMPLE_CSV_UTF8 = _SAMPLE_CSV.encode("utf-8")
+_SAMPLE_CSV_UTF8_BOM = _SAMPLE_CSV.encode("utf-8-sig")
+
+
+class TestDecodeBmfCsv:
+    def test_decodes_iso88591(self) -> None:
+        result = _decode_bmf_csv(_SAMPLE_CSV_BYTES)
+        assert "Januar" in result
+
+    def test_decodes_utf8(self) -> None:
+        result = _decode_bmf_csv(_SAMPLE_CSV_UTF8)
+        assert "Polen" in result
+
+    def test_decodes_utf8_with_bom(self) -> None:
+        result = _decode_bmf_csv(_SAMPLE_CSV_UTF8_BOM)
+        assert "Tschechien" in result
+
+
+class TestParseBmfCsvSanityCheck:
+    def test_raises_on_fewer_than_4_month_columns(self) -> None:
+        csv_3months = (
+            "Übersicht 2026\r\n"
+            "Land;Währung;Januar[1];Februar [2];März [3]\r\n"
+            "Polen;1 Euro;4,2127 PLN;4,2184 PLN;4,2715 PLN\r\n"
+        ).encode("utf-8")
+        with pytest.raises(ValueError, match="Monatsspalten"):
+            parse_bmf_csv(csv_3months)
+
+    def test_utf8_csv_parsed_correctly(self) -> None:
+        result = parse_bmf_csv(_SAMPLE_CSV_UTF8)
+        assert result["2026-01"]["PLN"] == "4.2127"
+
+    def test_utf8_bom_csv_parsed_correctly(self) -> None:
+        result = parse_bmf_csv(_SAMPLE_CSV_UTF8_BOM)
+        assert result["2026-01"]["PLN"] == "4.2127"

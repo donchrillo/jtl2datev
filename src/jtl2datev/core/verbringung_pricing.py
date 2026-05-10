@@ -29,7 +29,7 @@ import re
 from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import BaseModel
-from sqlalchemy import Engine, bindparam, text
+from sqlalchemy import Connection, Engine, bindparam, text
 
 logger = logging.getLogger(__name__)
 
@@ -221,52 +221,50 @@ def lookup_prices(
     results: dict[str, PricingResult] = {}
     remaining: set[str] = set(skus)
 
-    def _fetch_mapping_tier(probe_map: dict[str, str], tier: str) -> None:
+    def _fetch_mapping_tier(conn: Connection, probe_map: dict[str, str], tier: str) -> None:
         """probe_map: {probe_key -> original_sku}. Fetches via mapping table."""
         nonlocal remaining
         if not probe_map:
             return
         unique_probes = list(set(probe_map.keys()))
-        with engine.connect() as conn:
-            result = conn.execute(sql_mapping, {"skus": unique_probes})
-            for row in result.mappings():
-                probe = row["cSellerSKU"]
-                orig_sku = probe_map.get(probe)
-                if orig_sku is None or orig_sku not in remaining:
-                    continue
-                ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
-                results[orig_sku] = PricingResult(
-                    seller_sku=orig_sku,
-                    matched_jtl_artikel=row["cArtNr"],
-                    matched_via=tier,
-                    ek_netto=ek_raw,
-                    description=row["cName"] or None,
-                )
-                remaining.discard(orig_sku)
+        result = conn.execute(sql_mapping, {"skus": unique_probes})
+        for row in result.mappings():
+            probe = row["cSellerSKU"]
+            orig_sku = probe_map.get(probe)
+            if orig_sku is None or orig_sku not in remaining:
+                continue
+            ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
+            results[orig_sku] = PricingResult(
+                seller_sku=orig_sku,
+                matched_jtl_artikel=row["cArtNr"],
+                matched_via=tier,
+                ek_netto=ek_raw,
+                description=row["cName"] or None,
+            )
+            remaining.discard(orig_sku)
 
-    def _fetch_artikel_direct(orig_skus: list[str]) -> None:
+    def _fetch_artikel_direct(conn: Connection, orig_skus: list[str]) -> None:
         """Case-insensitive direct match on tArtikel.cArtNr."""
         nonlocal remaining
         if not orig_skus:
             return
         lower_to_orig = {s.lower(): s for s in orig_skus}
-        with engine.connect() as conn:
-            result = conn.execute(sql_artikel_direct, {"skus": list(lower_to_orig.keys())})
-            for row in result.mappings():
-                orig_sku = lower_to_orig.get(row["cArtNr"].lower())
-                if orig_sku is None or orig_sku not in remaining:
-                    continue
-                ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
-                results[orig_sku] = PricingResult(
-                    seller_sku=orig_sku,
-                    matched_jtl_artikel=row["cArtNr"],
-                    matched_via="tArtikel-direct",
-                    ek_netto=ek_raw,
-                    description=row["cName"] or None,
-                )
-                remaining.discard(orig_sku)
+        result = conn.execute(sql_artikel_direct, {"skus": list(lower_to_orig.keys())})
+        for row in result.mappings():
+            orig_sku = lower_to_orig.get(row["cArtNr"].lower())
+            if orig_sku is None or orig_sku not in remaining:
+                continue
+            ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
+            results[orig_sku] = PricingResult(
+                seller_sku=orig_sku,
+                matched_jtl_artikel=row["cArtNr"],
+                matched_via="tArtikel-direct",
+                ek_netto=ek_raw,
+                description=row["cName"] or None,
+            )
+            remaining.discard(orig_sku)
 
-    def _run_tier6(is_bware: bool) -> None:
+    def _run_tier6(conn: Connection, is_bware: bool) -> None:
         """Tier 6: ASIN-based lookup for still-unresolved SKUs with known ASIN.
 
         is_bware=True  → called inside the bware branch for amzn.gr.* SKUs.
@@ -300,23 +298,22 @@ def lookup_prices(
         unique_asins = list(asin_to_skus.keys())
 
         # 6a: tArtikel.cASIN → direct EK (best source, no extra join needed)
-        with engine.connect() as conn:
-            result = conn.execute(sql_asin_tartikel, {"asins": unique_asins})
-            for row in result.mappings():
-                asin = row["cASIN"]
-                for orig_sku in list(asin_to_skus.get(asin, [])):
-                    if orig_sku not in remaining:
-                        continue
-                    ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
-                    results[orig_sku] = PricingResult(
-                        seller_sku=orig_sku,
-                        matched_jtl_artikel=row["cArtNr"],
-                        matched_via="asin-tartikel",
-                        ek_netto=ek_raw,
-                        description=row["cName"] or None,
-                        is_bware=is_bware,
-                    )
-                    remaining.discard(orig_sku)
+        result = conn.execute(sql_asin_tartikel, {"asins": unique_asins})
+        for row in result.mappings():
+            asin = row["cASIN"]
+            for orig_sku in list(asin_to_skus.get(asin, [])):
+                if orig_sku not in remaining:
+                    continue
+                ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
+                results[orig_sku] = PricingResult(
+                    seller_sku=orig_sku,
+                    matched_jtl_artikel=row["cArtNr"],
+                    matched_via="asin-tartikel",
+                    ek_netto=ek_raw,
+                    description=row["cName"] or None,
+                    is_bware=is_bware,
+                )
+                remaining.discard(orig_sku)
 
         # 6b: pf_amazon_angebot.cASIN1 → cSellerSKU → mapping or tArtikel
         still_candidates = [s for s in candidates if s in remaining]
@@ -329,12 +326,11 @@ def lookup_prices(
 
         # Collect seller SKUs per ASIN from pf_amazon_angebot
         asin_to_seller_skus: dict[str, list[str]] = {}
-        with engine.connect() as conn:
-            result = conn.execute(sql_asin_angebot, {"asins": still_asins})
-            for row in result.mappings():
-                asin = row["cASIN"]
-                seller_sku = row["cSellerSKU"]
-                asin_to_seller_skus.setdefault(asin, []).append(seller_sku)
+        result = conn.execute(sql_asin_angebot, {"asins": still_asins})
+        for row in result.mappings():
+            asin = row["cASIN"]
+            seller_sku = row["cSellerSKU"]
+            asin_to_seller_skus.setdefault(asin, []).append(seller_sku)
 
         if not asin_to_seller_skus:
             return
@@ -359,126 +355,124 @@ def lookup_prices(
         unique_probes = list(probe_to_orig.keys())
 
         # 6b-i: mapping table lookup
-        with engine.connect() as conn:
-            result = conn.execute(sql_mapping, {"skus": unique_probes})
+        result = conn.execute(sql_mapping, {"skus": unique_probes})
+        for row in result.mappings():
+            probe = row["cSellerSKU"]
+            orig_sku_opt: str | None = probe_to_orig.get(probe)
+            if orig_sku_opt is None or orig_sku_opt not in remaining:
+                continue
+            orig_sku_i = orig_sku_opt
+            ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
+            results[orig_sku_i] = PricingResult(
+                seller_sku=orig_sku_i,
+                matched_jtl_artikel=row["cArtNr"],
+                matched_via="asin-angebot",
+                ek_netto=ek_raw,
+                description=row["cName"] or None,
+                is_bware=is_bware,
+            )
+            remaining.discard(orig_sku_i)
+
+        # 6b-ii: tArtikel direct for remaining
+        still_probes_lower = {p.lower(): p for p in unique_probes if probe_to_orig.get(p) in remaining}
+        if still_probes_lower:
+            result = conn.execute(sql_artikel_direct, {"skus": list(still_probes_lower.keys())})
             for row in result.mappings():
-                probe = row["cSellerSKU"]
-                orig_sku_opt: str | None = probe_to_orig.get(probe)
-                if orig_sku_opt is None or orig_sku_opt not in remaining:
+                lower_art = row["cArtNr"].lower()
+                probe = still_probes_lower.get(lower_art)
+                if probe is None:
                     continue
-                orig_sku_i = orig_sku_opt
+                orig_sku_opt2: str | None = probe_to_orig.get(probe)
+                if orig_sku_opt2 is None or orig_sku_opt2 not in remaining:
+                    continue
+                orig_sku_ii = orig_sku_opt2
                 ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
-                results[orig_sku_i] = PricingResult(
-                    seller_sku=orig_sku_i,
+                results[orig_sku_ii] = PricingResult(
+                    seller_sku=orig_sku_ii,
                     matched_jtl_artikel=row["cArtNr"],
                     matched_via="asin-angebot",
                     ek_netto=ek_raw,
                     description=row["cName"] or None,
                     is_bware=is_bware,
                 )
-                remaining.discard(orig_sku_i)
+                remaining.discard(orig_sku_ii)
 
-        # 6b-ii: tArtikel direct for remaining
-        still_probes_lower = {p.lower(): p for p in unique_probes if probe_to_orig.get(p) in remaining}
-        if still_probes_lower:
-            with engine.connect() as conn:
-                result = conn.execute(sql_artikel_direct, {"skus": list(still_probes_lower.keys())})
-                for row in result.mappings():
-                    lower_art = row["cArtNr"].lower()
-                    probe = still_probes_lower.get(lower_art)
-                    if probe is None:
+    with engine.connect() as conn:
+        # Tier 1: direct match via mapping table
+        _fetch_mapping_tier(conn, {sku: sku for sku in remaining}, "direct")
+
+        # Tier 2: FBA/MFN suffix stripping → mapping table
+        fba_map: dict[str, str] = {}
+        for sku in list(remaining):
+            stem = _strip_fba(sku)
+            if stem:
+                fba_map[stem] = sku
+        _fetch_mapping_tier(conn, fba_map, "fba")
+
+        # Tier 3: direct match on tArtikel.cArtNr (case-insensitive)
+        non_amzn_remaining = [sku for sku in remaining if not sku.startswith(_AMZN_PREFIX)]
+        _fetch_artikel_direct(conn, non_amzn_remaining)
+
+        # Separate amzn.gr.* SKUs: B-Ware (match _BWARE_RE) go to Tier 5,
+        # non-B-Ware (e.g. too short / unusual structure) go to Tier 4.
+        amzn_tier4: list[str] = []
+        amzn_tier5: list[str] = []
+        for sku in remaining:
+            if not sku.startswith(_AMZN_PREFIX):
+                continue
+            if extract_bware_stem(sku) is not None:
+                amzn_tier5.append(sku)
+            else:
+                amzn_tier4.append(sku)
+
+        # Tier 4: non-B-Ware amzn.gr.* → iterative stem candidates → mapping table
+        # Generate up to 3 stem candidates per SKU (remove 1-3 trailing dash-segments).
+        # First match (fewest segments removed) wins.
+        if amzn_tier4:
+            max_depth = 3
+            for depth in range(1, max_depth + 1):
+                depth_map: dict[str, str] = {}
+                for sku in list(remaining):
+                    if sku not in amzn_tier4 or sku not in remaining:
                         continue
-                    orig_sku_opt2: str | None = probe_to_orig.get(probe)
-                    if orig_sku_opt2 is None or orig_sku_opt2 not in remaining:
-                        continue
-                    orig_sku_ii = orig_sku_opt2
-                    ek_raw = _clean_decimal(row["fEKNetto"]) or _clean_decimal(row["fLetzterEK"])
-                    results[orig_sku_ii] = PricingResult(
-                        seller_sku=orig_sku_ii,
-                        matched_jtl_artikel=row["cArtNr"],
-                        matched_via="asin-angebot",
-                        ek_netto=ek_raw,
-                        description=row["cName"] or None,
-                        is_bware=is_bware,
+                    candidates = _amzn_stem_candidates(sku)
+                    if len(candidates) >= depth:
+                        candidate = candidates[depth - 1]
+                        if candidate not in depth_map:
+                            depth_map[candidate] = sku
+                _fetch_mapping_tier(conn, depth_map, "amzn")
+
+        # Tier 5: B-Ware structured regex stem → mapping (5a) then tArtikel (5b)
+        bware_remaining = [sku for sku in amzn_tier5 if sku in remaining]
+        bware_stem_match = 0
+        bware_fallback = 0
+
+        if bware_remaining:
+            if bware_strategy == "flat_10ct":
+                # Skip stem lookup entirely — flat price for all remaining amzn.gr.* SKUs
+                for sku in bware_remaining:
+                    results[sku] = PricingResult(
+                        seller_sku=sku,
+                        matched_jtl_artikel=None,
+                        matched_via="bware-fallback",
+                        ek_netto=_BWARE_FALLBACK_PRICE,
+                        description=None,
+                        is_bware=True,
+                        bware_pricing_basis=None,
                     )
-                    remaining.discard(orig_sku_ii)
+                    remaining.discard(sku)
+                    bware_fallback += 1
+            else:
+                # "ten_percent": structured regex to extract exact stem
+                # 5a: stem → mapping table
+                stem_to_sku: dict[str, str] = {}
+                for sku in bware_remaining:
+                    stem = extract_bware_stem(sku)
+                    if stem and stem not in stem_to_sku:
+                        stem_to_sku[stem] = sku
 
-    # Tier 1: direct match via mapping table
-    _fetch_mapping_tier({sku: sku for sku in remaining}, "direct")
-
-    # Tier 2: FBA/MFN suffix stripping → mapping table
-    fba_map: dict[str, str] = {}
-    for sku in list(remaining):
-        stem = _strip_fba(sku)
-        if stem:
-            fba_map[stem] = sku
-    _fetch_mapping_tier(fba_map, "fba")
-
-    # Tier 3: direct match on tArtikel.cArtNr (case-insensitive)
-    non_amzn_remaining = [sku for sku in remaining if not sku.startswith(_AMZN_PREFIX)]
-    _fetch_artikel_direct(non_amzn_remaining)
-
-    # Separate amzn.gr.* SKUs: B-Ware (match _BWARE_RE) go to Tier 5,
-    # non-B-Ware (e.g. too short / unusual structure) go to Tier 4.
-    amzn_tier4: list[str] = []
-    amzn_tier5: list[str] = []
-    for sku in remaining:
-        if not sku.startswith(_AMZN_PREFIX):
-            continue
-        if extract_bware_stem(sku) is not None:
-            amzn_tier5.append(sku)
-        else:
-            amzn_tier4.append(sku)
-
-    # Tier 4: non-B-Ware amzn.gr.* → iterative stem candidates → mapping table
-    # Generate up to 3 stem candidates per SKU (remove 1-3 trailing dash-segments).
-    # First match (fewest segments removed) wins.
-    if amzn_tier4:
-        max_depth = 3
-        for depth in range(1, max_depth + 1):
-            depth_map: dict[str, str] = {}
-            for sku in list(remaining):
-                if sku not in amzn_tier4 or sku not in remaining:
-                    continue
-                candidates = _amzn_stem_candidates(sku)
-                if len(candidates) >= depth:
-                    candidate = candidates[depth - 1]
-                    if candidate not in depth_map:
-                        depth_map[candidate] = sku
-            _fetch_mapping_tier(depth_map, "amzn")
-
-    # Tier 5: B-Ware structured regex stem → mapping (5a) then tArtikel (5b)
-    bware_remaining = [sku for sku in amzn_tier5 if sku in remaining]
-    bware_stem_match = 0
-    bware_fallback = 0
-
-    if bware_remaining:
-        if bware_strategy == "flat_10ct":
-            # Skip stem lookup entirely — flat price for all remaining amzn.gr.* SKUs
-            for sku in bware_remaining:
-                results[sku] = PricingResult(
-                    seller_sku=sku,
-                    matched_jtl_artikel=None,
-                    matched_via="bware-fallback",
-                    ek_netto=_BWARE_FALLBACK_PRICE,
-                    description=None,
-                    is_bware=True,
-                    bware_pricing_basis=None,
-                )
-                remaining.discard(sku)
-                bware_fallback += 1
-        else:
-            # "ten_percent": structured regex to extract exact stem
-            # 5a: stem → mapping table
-            stem_to_sku: dict[str, str] = {}
-            for sku in bware_remaining:
-                stem = extract_bware_stem(sku)
-                if stem and stem not in stem_to_sku:
-                    stem_to_sku[stem] = sku
-
-            if stem_to_sku:
-                unique_stems = list(stem_to_sku.keys())
-                with engine.connect() as conn:
+                if stem_to_sku:
+                    unique_stems = list(stem_to_sku.keys())
                     result = conn.execute(sql_mapping, {"skus": unique_stems})
                     for row in result.mappings():
                         stem_hit = row["cSellerSKU"]
@@ -499,19 +493,18 @@ def lookup_prices(
                         remaining.discard(orig_sku)
                         bware_stem_match += 1
 
-            # 5b: stems still unresolved → tArtikel direct
-            still_bware = [sku for sku in remaining if sku.startswith(_AMZN_PREFIX)]
-            if still_bware:
-                stem_to_sku_b: dict[str, str] = {}
-                for sku in still_bware:
-                    stem = extract_bware_stem(sku)
-                    if stem:
-                        lower_stem = stem.lower()
-                        if lower_stem not in stem_to_sku_b:
-                            stem_to_sku_b[lower_stem] = sku
+                # 5b: stems still unresolved → tArtikel direct
+                still_bware = [sku for sku in remaining if sku.startswith(_AMZN_PREFIX)]
+                if still_bware:
+                    stem_to_sku_b: dict[str, str] = {}
+                    for sku in still_bware:
+                        stem = extract_bware_stem(sku)
+                        if stem:
+                            lower_stem = stem.lower()
+                            if lower_stem not in stem_to_sku_b:
+                                stem_to_sku_b[lower_stem] = sku
 
-                if stem_to_sku_b:
-                    with engine.connect() as conn:
+                    if stem_to_sku_b:
                         result = conn.execute(
                             sql_artikel_direct,
                             {"skus": list(stem_to_sku_b.keys())},
@@ -535,28 +528,28 @@ def lookup_prices(
                             remaining.discard(orig_sku)
                             bware_stem_match += 1
 
-            # Tier 6 for amzn.gr.* before fallback (only with ten_percent strategy)
-            _run_tier6(is_bware=True)
+                # Tier 6 for amzn.gr.* before fallback (only with ten_percent strategy)
+                _run_tier6(conn, is_bware=True)
 
-            # Remaining amzn.gr.* with no stem match → fallback 0.10 EUR
-            for sku in list(remaining):
-                if sku.startswith(_AMZN_PREFIX):
-                    results[sku] = PricingResult(
-                        seller_sku=sku,
-                        matched_jtl_artikel=None,
-                        matched_via="bware-fallback",
-                        ek_netto=_BWARE_FALLBACK_PRICE,
-                        description=None,
-                        is_bware=True,
-                        bware_pricing_basis=None,
-                    )
-                    remaining.discard(sku)
-                    bware_fallback += 1
+                # Remaining amzn.gr.* with no stem match → fallback 0.10 EUR
+                for sku in list(remaining):
+                    if sku.startswith(_AMZN_PREFIX):
+                        results[sku] = PricingResult(
+                            seller_sku=sku,
+                            matched_jtl_artikel=None,
+                            matched_via="bware-fallback",
+                            ek_netto=_BWARE_FALLBACK_PRICE,
+                            description=None,
+                            is_bware=True,
+                            bware_pricing_basis=None,
+                        )
+                        remaining.discard(sku)
+                        bware_fallback += 1
 
-    # Tier 6: ASIN-based lookup for all still-remaining SKUs with known ASIN
-    # (for non-amzn.gr.* SKUs that slipped through Tiers 1-3, and amzn.gr.* already
-    # handled above inside the ten_percent branch)
-    _run_tier6(is_bware=False)
+        # Tier 6: ASIN-based lookup for all still-remaining SKUs with known ASIN
+        # (for non-amzn.gr.* SKUs that slipped through Tiers 1-3, and amzn.gr.* already
+        # handled above inside the ten_percent branch)
+        _run_tier6(conn, is_bware=False)
 
     # Fill not-found
     for sku in remaining:

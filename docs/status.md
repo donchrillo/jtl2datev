@@ -2,6 +2,29 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — Sprint D (Compliance-Polish) umgesetzt
+
+**Robustheit, Input-Validation, Ressourcen-Cleanup:**
+
+**W-14** `cli.py`: `_parse_month()` strikter Regex `^\d{4}-\d{2}$` — "2026-4" wird abgelehnt.
+
+**W-11** `core/exchange_rates.py`: BMF-CSV-Encoding-Detection (utf-8-sig → utf-8 → iso-8859-1) + Sanity-Check ≥4 Monatsspalten. `fetch_bmf_csv()` + `parse_bmf_csv()` robust gegen Varianten.
+
+**W-12** `core/verbringung_parser.py`: Amazon-TSV-Encoding-Detection (utf-8-sig → utf-8 → utf-16 → utf-16-le → cp1252). `_detect_encoding()` Helper mit Fallback-Kette.
+
+**W-10** `core/db_jtl.py` + `cli.py`: Context-Manager `managed_engine(settings)` — alle 8 CLI-Commands (`export`, `export-delta`, `export-dutypay`, `export-dutypay-delta`, `export-taxually`, `export-taxually-delta`, `export-verbringung`, `mixed-vat-check`, `reconcile`, `import-rates`) via `with managed_engine(...) as engine:` Block. Garantierte `engine.dispose()` Cleanup auch bei Exception.
+
+**W-15** `core/verbringung_pricing.py`: `lookup_prices()` öffnet DB-Connection **einmalig**, reicht `conn` an alle Tier-Funktionen durch. Vorher: bis zu 9 separate `engine.connect()`-Aufrufe pro Lookup. Effekt: Ressourcenverbrauch bei Batch-Läufen deutlich reduziert.
+
+**Tests:** 427 passed, 14 skipped (+15 neue Tests). ruff clean.
+
+**Nicht umgesetzt (bewusst):**
+- W-2 (period-validity STANDARD_VAT_RATE) — Tool produktiv erst 2026.
+- W-3 (VIES-Cache) — >4h Aufwand, separat.
+- W-6/W-7 (Verbringungs-PDF §10/§16-Hinweise) — Steuerberater-Freigabe nötig.
+
+---
+
 ## 2026-05-10 — Sprint C Phase 3 (`BuchungsRow`-Dataclass) umgesetzt
 
 **DATEV-Export-Modell refaktoriert — Feldabstraktion:**

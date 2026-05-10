@@ -2,11 +2,18 @@
 
 ## Status
 
-**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) umgesetzt (2026-05-10).**
+**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) + Sprint C Phase 3 (BuchungsRow-Refactor) + Sprint D (Compliance-Polish) umgesetzt (2026-05-10).**
 
-**Architektur-Cleanup:** `core/reference_data.py` zentralisiert Stammdaten (EU-Länder, Währungen, Plattformen, Min-Datum). `RawInvoiceLine` auf Kern-Felder reduziert (12 nie gelesene Item-Felder entfernt). 412 Tests grün.
+**Architektur-Cleanup:** `core/reference_data.py` zentralisiert Stammdaten (EU-Länder, Währungen, Plattformen, Min-Datum). `RawInvoiceLine` auf Kern-Felder reduziert (12 nie gelesene Item-Felder entfernt). `BuchungsRow`-Dataclass mit 22 benannten Feldern, `to_csv_row()`-Methode als Single Source of Truth für 124-Spalten-Mapping. 427 Tests grün.
 
 **Verbringungen-SKU-Mapping:** Q1-2026 100 % aufgelöst (Tier 5 B-Ware + Tier 6 ASIN-Lookup, 0 unresolved).
+
+**Compliance-Polish (Sprint D):**
+- **W-14:** `cli.py` Monats-Parser strikter (Regex `^\d{4}-\d{2}$`).
+- **W-11:** `core/exchange_rates.py` BMF-CSV-Encoding-Detection (utf-8-sig → utf-8 → iso-8859-1) + Sanity-Check.
+- **W-12:** `core/verbringung_parser.py` Amazon-TSV-Encoding-Detection (utf-8-sig → utf-8 → utf-16 → utf-16-le → cp1252).
+- **W-10:** `core/db_jtl.py` + `cli.py` Context-Manager `managed_engine()`, alle 8 CLI-Commands mit sauberer `engine.dispose()` via `with`-Block.
+- **W-15:** `core/verbringung_pricing.py` DB-Connection einmalig öffnen, an alle Tier-Funktionen durchreichen (statt 9 separate `engine.connect()`-Aufrufe pro Lookup).
 
 **Standardworkflow (erweitert um Verbringungen):**
 ```
@@ -21,7 +28,7 @@ jtl2datev export-verbringung --report ... --month YYYY-MM  # Amazon-FBA-Transfer
 jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 ```
 
-**Tests:** 412 passed, 14 skipped. ruff clean.
+**Tests:** 427 passed, 14 skipped. ruff clean.
 
 ## Offene Punkte — Audit & Dateneingabe
 

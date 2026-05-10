@@ -1,9 +1,12 @@
 import csv
 import datetime as dt
 import logging
+import re
 from pathlib import Path
 
 import click
+
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 from jtl2datev.core.exchange_rates import DEFAULT_RATES_PATH, get_rates_for_period
 
@@ -97,7 +100,7 @@ def export_cmd(
     """Exportiert Rechnungen aus JTL als DATEV-CSV."""
     from jtl2datev.core.config import Settings
     from jtl2datev.core.datev import load_compare_map, write_extf_buchungsstapel
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.models import LineDecision
     from jtl2datev.core.tax_engine import decide
 
@@ -125,19 +128,19 @@ def export_cmd(
         click.echo(f"Vergleichsreferenz geladen: {len(compare_map):,} Order-IDs aus {compare_to}")
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=df, date_to=dt_)
-        report = write_extf_buchungsstapel(
-            invoices_iter,
-            out_path=effective_out,
-            settings=settings,
-            date_from=df,
-            date_to=dt_,
-            decisions_by_invoice=decisions,
-            compare_map=compare_map,
-            audit=audit,
-        )
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices_iter = repo.fetch_invoices(date_from=df, date_to=dt_)
+            report = write_extf_buchungsstapel(
+                invoices_iter,
+                out_path=effective_out,
+                settings=settings,
+                date_from=df,
+                date_to=dt_,
+                decisions_by_invoice=decisions,
+                compare_map=compare_map,
+                audit=audit,
+            )
         click.echo(f"DATEV-Export geschrieben: {effective_out}")
         click.echo(f"  Buchungen: {report.bookings_written}")
         click.echo(f"  Belege geskippt (Fehler):    {report.skipped_error}")
@@ -162,12 +165,11 @@ def export_cmd(
 
 def _parse_month(month_str: str) -> tuple[int, int]:
     """Parse 'YYYY-MM' and return (year, month). Raises SystemExit on bad input."""
-    try:
-        year_s, month_s = month_str.split("-")
-        return int(year_s), int(month_s)
-    except ValueError:
-        click.echo(f"Ungültiges Monatsformat: {month_str!r}. Erwartet: YYYY-MM")
+    if not _MONTH_RE.fullmatch(month_str):
+        click.echo(f"Ungültiges Monatsformat: {month_str!r}. Erwartet: YYYY-MM (z.B. 2026-04)")
         raise SystemExit(1)
+    year_s, month_s = month_str.split("-")
+    return int(year_s), int(month_s)
 
 
 def _month_date_range(year: int, month: int) -> tuple[dt.date, dt.date]:
@@ -251,7 +253,7 @@ def export_dutypay_cmd(
     import tempfile
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.dutypay import dutypay_filename, write_dutypay_csv
 
     date_from_d, date_to_d = _resolve_date_range(date_from, date_to, month_str)
@@ -266,14 +268,14 @@ def export_dutypay_cmd(
         tmp_path = Path(tmp.name)
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
-        report = write_dutypay_csv(
-            invoices_iter,
-            out_path=tmp_path,
-            own_vat_ids=settings.own_vat_ids,
-        )
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
+            report = write_dutypay_csv(
+                invoices_iter,
+                out_path=tmp_path,
+                own_vat_ids=settings.own_vat_ids,
+            )
 
         if use_archive:
             from jtl2datev.core.archive import archive_export
@@ -371,7 +373,7 @@ def export_dutypay_delta_cmd(
     import tempfile
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.dutypay import DUTYPAY_COLUMNS, write_dutypay_csv
     from jtl2datev.core.dutypay_delta import (
         NoBaselineError,
@@ -415,14 +417,14 @@ def export_dutypay_delta_cmd(
         current_tmp = Path(tmp.name)
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
-        write_dutypay_csv(
-            invoices_iter,
-            out_path=current_tmp,
-            own_vat_ids=settings.own_vat_ids,
-        )
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
+            write_dutypay_csv(
+                invoices_iter,
+                out_path=current_tmp,
+                own_vat_ids=settings.own_vat_ids,
+            )
 
         if use_archive:
             from jtl2datev.core.archive import archive_export
@@ -575,7 +577,7 @@ def export_delta_cmd(
         load_baseline,
         write_delta_extf,
     )
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.models import LineDecision
     from jtl2datev.core.tax_engine import decide
 
@@ -626,19 +628,19 @@ def export_delta_cmd(
         current_tmp = Path(tmp.name)
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
-        write_extf_buchungsstapel(
-            invoices_iter,
-            out_path=current_tmp,
-            settings=settings,
-            date_from=date_from_d,
-            date_to=date_to_d,
-            decisions_by_invoice=decisions,
-            compare_map=compare_map,
-            audit=audit,
-        )
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices_iter = repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d)
+            write_extf_buchungsstapel(
+                invoices_iter,
+                out_path=current_tmp,
+                settings=settings,
+                date_from=date_from_d,
+                date_to=date_to_d,
+                decisions_by_invoice=decisions,
+                compare_map=compare_map,
+                audit=audit,
+            )
 
         if use_archive:
             from jtl2datev.core.archive import archive_export
@@ -752,7 +754,7 @@ def export_taxually_cmd(
     import tempfile
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.taxually import format_taxually_xlsx, taxually_filename
     from jtl2datev.core.taxually_delta import archive_taxually_export
 
@@ -768,10 +770,10 @@ def export_taxually_cmd(
         tmp_path = Path(tmp.name)
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices = list(repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d))
-        rows_written = format_taxually_xlsx(invoices, tmp_path)
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices = list(repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d))
+            rows_written = format_taxually_xlsx(invoices, tmp_path)
 
         if use_archive:
             archived = archive_taxually_export(
@@ -863,7 +865,7 @@ def export_taxually_delta_cmd(
     import tempfile
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.taxually import format_taxually_xlsx
     from jtl2datev.core.taxually_delta import (
         NoBaselineError,
@@ -904,10 +906,10 @@ def export_taxually_delta_cmd(
         current_tmp = Path(tmp.name)
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        current_invoices = list(repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d))
-        format_taxually_xlsx(current_invoices, current_tmp)
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            current_invoices = list(repo.fetch_invoices(date_from=date_from_d, date_to=date_to_d))
+            format_taxually_xlsx(current_invoices, current_tmp)
 
         if use_archive:
             archived_full = archive_taxually_export(
@@ -996,7 +998,7 @@ def reconcile_cmd(
 ) -> None:
     """Vergleicht JTL-Steuerdaten mit eigener Engine und gibt Mismatch-Report aus."""
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import JtlInvoiceRepository, make_engine
+    from jtl2datev.core.db_jtl import JtlInvoiceRepository, managed_engine
     from jtl2datev.core.pipeline import run_reconcile
 
     df, dt_ = _resolve_date_range(date_from, date_to, month_str)
@@ -1004,15 +1006,15 @@ def reconcile_cmd(
     settings = Settings()
 
     try:
-        engine = make_engine(settings)
-        repo = JtlInvoiceRepository(engine)
-        invoices = repo.fetch_invoices(date_from=df, date_to=dt_)
-        sample_limit = 1_000_000 if out_mismatches is not None else 20
-        report = run_reconcile(
-            invoices,
-            own_vat_countries=settings.own_vat_countries,
-            sample_limit=sample_limit,
-        )
+        with managed_engine(settings) as engine:
+            repo = JtlInvoiceRepository(engine)
+            invoices = repo.fetch_invoices(date_from=df, date_to=dt_)
+            sample_limit = 1_000_000 if out_mismatches is not None else 20
+            report = run_reconcile(
+                invoices,
+                own_vat_countries=settings.own_vat_countries,
+                sample_limit=sample_limit,
+            )
     except Exception as exc:
         click.echo(f"Fehler: {exc}")
         raise SystemExit(1) from exc
@@ -1156,7 +1158,7 @@ def mixed_vat_check_cmd(
     und betroffene Belege in JTL prüfen/korrigieren.
     """
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import make_engine
+    from jtl2datev.core.db_jtl import managed_engine
     from jtl2datev.core.preflight import find_mixed_vat_belege
 
     df, dt_ = _resolve_date_range(date_from, date_to, month_str)
@@ -1164,8 +1166,8 @@ def mixed_vat_check_cmd(
     settings = Settings()
 
     try:
-        engine = make_engine(settings)
-        belege = find_mixed_vat_belege(engine, date_from=df, date_to=dt_)
+        with managed_engine(settings) as engine:
+            belege = find_mixed_vat_belege(engine, date_from=df, date_to=dt_)
     except Exception as exc:
         click.echo(f"Fehler beim Mixed-VAT-Check: {exc}")
         raise SystemExit(1) from exc
@@ -1317,7 +1319,7 @@ def export_verbringung_cmd(
     from decimal import Decimal, InvalidOperation
 
     from jtl2datev.core.config import Settings
-    from jtl2datev.core.db_jtl import make_engine
+    from jtl2datev.core.db_jtl import managed_engine
     from jtl2datev.core.exchange_rates import set_rate
     from jtl2datev.core.verbringung_parser import parse_amazon_report
     from jtl2datev.core.verbringung_pdf import (
@@ -1392,15 +1394,15 @@ def export_verbringung_cmd(
 
         # Lookup prices from JTL
         settings = Settings()
-        engine = make_engine(settings)
         unique_skus = list({m.seller_sku for m in movements})
         asin_by_sku = {m.seller_sku: m.asin for m in movements if m.asin and m.seller_sku}
-        pricing = lookup_prices(
-            unique_skus,
-            engine,
-            bware_strategy=bware_pricing_strategy,
-            asin_by_sku=asin_by_sku,
-        )
+        with managed_engine(settings) as engine:
+            pricing = lookup_prices(
+                unique_skus,
+                engine,
+                bware_strategy=bware_pricing_strategy,
+                asin_by_sku=asin_by_sku,
+            )
 
         mapped = sum(1 for p in pricing.values() if p.ek_netto is not None)
         unmapped = len(unique_skus) - mapped
