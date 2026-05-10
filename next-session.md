@@ -57,11 +57,14 @@ jtl2datev export-delta --month YYYY-MM          # falls nachgelagerte Belege
 
 ## Phase 2 (Erweiterungen)
 
-- **FastAPI-Skeleton**: `src/jtl2datev/api/`-Package mit FastAPI-App, das die bestehenden Services per HTTP exponiert. Konkretisiert die Schichten-Trennung. ~2–3h.
+- **FastAPI-Auth + CORS**: aktuelles Skeleton hat keine Auth (TODO im Code) und kein CORS (kommt mit React-Frontend). Vor Produktiv-Deployment: API-Key oder OAuth2 + CORS-Whitelist konfigurieren.
+- **Verbringungs-Endpoint**: braucht Pydantic-Body mit `exchange_rates` als Input (Service ist pure, FastAPI-Route würde 400 mit `missing_currencies` zurückgeben). ~1–2h.
+- **Delta-Endpoints**: Baseline-Auflösung müsste per Body oder Query (Pfad zur Datei) angegeben werden. Bei FastAPI-Deployment in der Cloud kommt Storage-Backend statt lokales `exports/`-Verzeichnis dazu. Eigener Sprint.
 
 (W-16-A 2026-05-10: CLI → `cli/`-Package mit 9 Modulen.)
 (W-16-B 2026-05-10: `core/services/` mit DATEV/DutyPay/Taxually-Services + Delta-Varianten.)
-(W-16-B-Rest 2026-05-10: Verbringung/Reconcile/Mixed-VAT zusätzlich als Services. Verbringung-Service ist pure — interaktive Wechselkurs-Prompts bleiben in CLI. Alle 8 Exporter/Tools sind jetzt service-fähig.)
+(W-16-B-Rest 2026-05-10: Verbringung/Reconcile/Mixed-VAT zusätzlich als Services. Alle 8 Exporter/Tools sind jetzt service-fähig.)
+(FastAPI-Skeleton 2026-05-10: `src/jtl2datev/api/` mit 5 Endpoints — DATEV/DutyPay/Taxually-Export, Reconcile-Report, Mixed-VAT-Check. Lifespan-Engine, typed Exception-Handlers, OpenAPI/Swagger automatisch unter `/docs`.)
 (W-19 wurde durch B-9 abgedeckt — `ArticlePricingRepository` lebt jetzt in `core/repositories.py` mit JTL-Implementierung in `core/db_jtl.py`.)
 
 ## Notizen für Orchestrator

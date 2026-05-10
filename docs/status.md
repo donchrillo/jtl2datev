@@ -2,6 +2,39 @@
 
 Hier wandert Erledigtes aus `next-session.md` rein. Nur bei Bedarf lesen.
 
+## 2026-05-10 — FastAPI-Skeleton angelegt
+
+**Demonstriert die Schichten-Trennung konkret:** HTTP-Routen sind dünne Wrapper über `core/services/`. React-Frontend (geplant) kann jetzt die gleichen Services per HTTP konsumieren wie die CLI lokal.
+
+**Neuer `src/jtl2datev/api/`-Package:**
+- `api/__init__.py`: Modul-Doku
+- `api/main.py`: FastAPI-App mit Lifespan-Engine, typed Exception-Handlers, `/health` + `/docs` (Swagger UI), `run()`-Entry-Point
+- `api/dependencies.py`: `get_settings`, `get_invoice_repo`, `get_pricing_repo`, `parse_period` als FastAPI-Dependencies (singleton Settings, app-weite Engine, pro-Request Repository)
+- `api/routers/exports.py`: `POST /export/datev`, `POST /export/dutypay`, `POST /export/taxually` — liefern `FileResponse` mit Result-Statistiken in HTTP-Headern (`X-Bookings-Written` etc.). BackgroundTasks räumt tmp-Files auf.
+- `api/routers/reports.py`: `GET /reconcile`, `GET /mixed-vat-check` — liefern strukturierte JSON-Responses (Pydantic-Modelle `ReconcileSummary`, `MixedVatBelegOut`).
+
+**Engine-Lifecycle:** App-weite Engine via FastAPI `lifespan`-Context (single Engine mit Connection-Pool für die App-Lebensdauer; bei Shutdown `dispose()`). Pro Request: frisches Repository über die geteilte Engine.
+
+**Exception-Handler:** Service-Exceptions werden zu HTTP-Responses gemappt:
+- `NoBaselineError` (DATEV/DutyPay/Taxually-Delta) → `404` mit `{"error": "no_baseline", "detail": ...}`
+- `MissingExchangeRatesError` (Verbringung) → `400` mit `{"error": "missing_exchange_rates", "missing_currencies": [...]}`
+
+**Dependencies:** Optional via `pip install jtl2datev[api]` (fastapi, uvicorn, httpx). Kein Impact auf CLI-Installation.
+
+**Entry-Points:**
+- `jtl2datev` (CLI, unverändert)
+- `jtl2datev-api` (FastAPI über uvicorn, neu) → startet auf `127.0.0.1:8000`
+
+**Bewusst nicht im Skeleton:**
+- Auth (TODO vor Produktiv-Deployment)
+- CORS (Konfiguration kommt mit React-Frontend)
+- Verbringungs-Endpoint (Pydantic-Body mit `exchange_rates` als Input nötig)
+- Delta-Endpoints (Baseline-Auflösung CLI-spezifisch — Cloud-Deployment braucht Storage-Backend)
+
+**Tests:** 7 neue API-Smoke-Tests (Health, OpenAPI-Spec, Period-Validation, Mixed-VAT-Roundtrip mit gemockter Engine). **Total: 438 passed, 14 skipped.** ruff clean.
+
+---
+
 ## 2026-05-10 — W-16-B-Rest (Services für Verbringung/Reconcile/Mixed-VAT) umgesetzt
 
 **Vervollständigt den Service-Layer:** alle 8 Exporter/Tools sind jetzt FastAPI-tauglich.
