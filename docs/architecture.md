@@ -2,8 +2,8 @@
 
 ## Leitlinien
 
-- **Konsolen-First, Library-Kern**: `core/` ist eine reine Python-Library ohne CLI-/UI-/Framework-Abhängigkeiten. `cli.py` ist nur Adapter.
-- **Spätere Migration**: Wenn die Logik steht, wandert `core/` in das ERP-Monorepo (FastAPI + React 19). Dort wird ein FastAPI-Router um die gleichen Funktionen gebaut, das Frontend ruft sie über die API.
+- **Schichten-First, Library-Kern**: `core/` ist eine reine Python-Library ohne CLI-/UI-/Framework-Abhängigkeiten. `cli/` (Click) und `api/` (FastAPI) sind dünne Adapter, beide rufen den **Service-Layer (`core/services/`)** als gemeinsame Schnittstelle.
+- **Spätere Migration**: Das Service-Layer ist bereits FastAPI-tauglich; das `api/`-Skeleton zeigt die HTTP-Anbindung mit 5 Endpoints. Bei der ERP-Integration werden Auth, CORS, Verbringungs-Endpoint und Delta-Endpoints ergänzt.
 - **Repository-Pattern für DB**: JTL heute, eigenes ERP morgen. Tausch über Interface, nicht über Code-Änderung im Kern.
 - **Eigene Steuer-Engine, JTL-Tax nur als Referenz** (Entscheidung 2026-05-05):
   Wir replizieren NICHT JTLs `Steuern.*`-Schlüssellogik. Stattdessen lesen wir
@@ -22,7 +22,8 @@
 |---|---|---|
 | `core/config.py` | ✓ | Pydantic-Settings: DB-Connection, DATEV-Mandant, Konten-Mappings, own_vat_ids |
 | `core/models.py` | ✓ | RawInvoice, RawInvoiceLine (synthetisch mit Header-Aggregaten), PartyAddress (first_name/last_name/company), TaxTreatment, TaxDecision, LineDecision, ReconcileMismatch |
-| `core/repositories.py` | ✓ | Abstrakte Interfaces: InvoiceRepository |
+| `core/repositories.py` | ✓ | Abstrakte Interfaces: `InvoiceRepository` (`fetch_invoices`, `find_mixed_vat_belege`), `ArticlePricingRepository` (`lookup_ek_prices`). |
+| `core/services/` | ✓ | Application-Layer: typed Request/Result/Exceptions. `datev_service`, `dutypay_service`, `taxually_service` (jew. + Delta), `verbringung_service` (mit `MissingExchangeRatesError`), `reconcile_service`, `mixed_vat_service`. Pure: kein print, kein SystemExit, kein Engine-Lifecycle, kein Archive. |
 | `core/db_jtl.py` | ✓ | JTL-MSSQL-Implementierung, read-only. SQL-Queries lesen Brutto/Netto direkt aus Eckdaten-Tabellen. `fetch_invoices()` mit `_fetch_own()` (eBay/Kaufland/Otto/JTL-manuell; nutzt `tRechnungEckdaten`) + `_fetch_external()` (nur Amazon-VCS; nutzt `tExternerBelegEckdaten`) + `_fetch_credit_notes()` (nutzt `vGutschriftEckdaten`). Helper `derive_vat_rate(gross, net)` leitet Steuersatz ab mit Snap auf Standard-Rate (±0,5 pp Toleranz). Jede `RawInvoice` hat exakt eine `RawInvoiceLine` mit Header-Beträgen. |
 | `core/tax_engine.py` | ✓ | Eigene Steuer-Engine: aus Beleg-Fakten → TaxTreatment (DOMESTIC / OSS_B2C / IGL_B2B / THIRD_COUNTRY / MARKETPLACE_FACILITATOR). VAT-ID-Format-Plausibilität, GB-Sonderfall. |
 | `core/rules.py` | ✓ | Konten-Mapping: TaxTreatment × Lagerland × Bestimmung → (DATEV-Sachkonto, BU-Schlüssel). Jera-Konvention (IGL→4126, THIRD_COUNTRY→4121). Mit Audit-Tag-Support. |
@@ -39,7 +40,8 @@
 | `core/exchange_rates.py` | ✓ | JSON-Storage (`data/exchange_rates.json`) + BMF-CSV-Importer. API: `load_rates`, `get_rate`, `set_rate`, `get_rates_for_period`, `fetch_bmf_csv`, `parse_bmf_csv`, `import_bmf_rates`. |
 | `core/reference_data.py` | ✓ | Stammdaten-Zentralisierung: EU_MEMBER_STATES, COUNTRY_CURRENCY, PLATFORM_COUNTRY, HARD_MIN_INVOICE_DATE. Single Source für länder-/währungs-/plattformübergreifende Constants. |
 | `core/archive.py` | ✓ | Generischer Archiv-Helfer für DATEV/DutyPay/Taxually/Verbringungen (Auto-Verzeichniserstellung, Timestamp-Naming). |
-| `cli.py` | ✓ | Click-Wrapper: `export`, `export-delta`, `export-dutypay`, `export-dutypay-delta`, `export-taxually`, `export-taxually-delta`, `export-verbringung`, `import-rates`, `mixed-vat-check`, `reconcile`. Error-Handling für DB/Validation. |
+| `cli/` | ✓ | Click-Sub-Commands als Package (9 Module). `__init__.py` (main+version), `_common.py` (Date-Parser), `export_datev.py`, `export_dutypay.py`, `export_taxually.py`, `export_verbringung.py`, `reconcile.py`, `mixed_vat_check.py`, `import_rates.py`. Jeder Command: Argument-Parsing → Service-Aufruf → Echo-Formatierung → Exception→SystemExit. |
+| `api/` | ✓ | FastAPI-Skeleton (optional via `pip install jtl2datev[api]`). Lifespan-Engine, 5 Endpoints (`POST /export/{datev,dutypay,taxually}` mit FileResponse, `GET /reconcile|/mixed-vat-check` mit JSON), typed Exception-Handlers (NoBaseline→404, MissingExchangeRates→400). Entry-Point `jtl2datev-api`. |
 
 Legend: ✓ = Implementiert/Getestet, ⧖ = Stub
 
@@ -178,38 +180,47 @@ Die hier aufgebaute Logik wandert 1:1 ins künftige ERP-System. Heute ist `jtl2d
 
 | Schicht                              | Heute                            | Im ERP-System                                |
 |--------------------------------------|----------------------------------|-----------------------------------------------|
-| Geschäftslogik (framework-agnostisch)| `src/jtl2datev/core/*.py`        | `backend/core/modules/jtl2datev/` (oder analog) |
+| Domain (framework-agnostisch)        | `src/jtl2datev/core/*.py`        | `backend/core/modules/jtl2datev/` (oder analog) |
+| Application (Service-Layer)          | `core/services/*.py` (typed Request/Result) | bleibt 1:1 — wird direkt von FastAPI-Routen aufgerufen |
 | DB-Adapter (swappable)               | `core/repositories.py` (ABC) → `core/db_jtl.py` (MSSQL) | Neue Impl. `core/db_toci.py` gegen eigenes ERP-Schema, Interface bleibt |
-| CLI-Wrapper                          | `src/jtl2datev/cli.py` (Click)   | Wegfällt — durch FastAPI-Routen ersetzt        |
-| Konfiguration                        | `core/config.py` (Pydantic Settings) | bleibt, ggf. via FastAPI-Dependency-Injection |
+| CLI-Wrapper                          | `src/jtl2datev/cli/` (Click-Package, 9 Module) | bleibt für Admin-Tasks oder fällt weg |
+| HTTP-API                             | `src/jtl2datev/api/` (FastAPI-Skeleton, 5 Endpoints) | erweitert um Auth, CORS, Verbringung, Delta-Endpoints |
+| Konfiguration                        | `core/config.py` (Pydantic Settings) | bleibt, via FastAPI-Dependency-Injection (`get_settings`) |
 | Filesystem-Archive                   | `core/archive.py` (lokales FS)   | bei Bedarf S3/Object-Storage-Adapter, isolierte Schicht |
 
 ### Warum der Umzug sauber läuft
 
 **`core/` ist heute bereits framework-frei:**
 - Kein `click`, kein `print()` — ausschließlich `logging`.
-- DB-Engine wird per Konstruktor injiziert: `JtlInvoiceRepository(engine)`. In FastAPI direkt per `Depends()` bereitstellbar.
-- Pipeline-Funktionen (`write_dutypay_csv`, `compute_delta`, `write_extf_csv`) arbeiten mit Iterator/Iterable, schreiben Output — reine Library-Calls, keine CLI-Funktionen.
+- DB-Engine wird per Konstruktor injiziert: `JtlInvoiceRepository(engine)`. In FastAPI direkt per `Depends()` bereitstellbar (siehe `api/dependencies.py`).
+- **Service-Layer (`core/services/`)** ist die einheitliche Schnittstelle: typed Request → typed Result. Beide Aufrufer (CLI/API) bauen denselben Request, bekommen dasselbe Result.
 
-**Beispiel: CLI heute vs. FastAPI morgen**
+**Beispiel: CLI heute, FastAPI heute** (beide implementiert)
 
-Heute (Click-basiert):
-```
-jtl2datev export-dutypay --month 2026-01 --out /tmp
-```
-
-Morgen (FastAPI-basiert):
+CLI:
 ```python
-@router.post("/exports/dutypay")
-async def export_dutypay(month: str, repo: InvoiceRepository = Depends(get_repo)):
-    date_from, date_to = parse_month(month)
-    invoices = repo.fetch_invoices(date_from=date_from, date_to=date_to)
-    write_dutypay_csv(invoices, out_path=tmp_path, own_vat_ids=settings.own_vat_ids)
-    archived = archive_export(tmp_path, ...)
-    return {"path": str(archived), "rows": ...}
+# cli/export_dutypay.py
+result = export_dutypay(DutypayExportRequest(
+    repo=JtlInvoiceRepository(engine),
+    settings=settings,
+    date_from=df, date_to=dt_,
+    out_path=tmp_path,
+))
+click.echo(f"Zeilen: {result.report.rows_written}")
 ```
 
-**Das Entscheidende:** Beide rufen **dieselbe** `write_dutypay_csv`-Funktion. Logik-Code wandert 1:1, nur der Wrapper wechselt.
+FastAPI:
+```python
+# api/routers/exports.py
+result = export_dutypay(DutypayExportRequest(
+    repo=repo, settings=settings,
+    date_from=date_from, date_to=date_to,
+    out_path=out_path,
+))
+return FileResponse(result.out_path, media_type="text/csv")
+```
+
+**Das Entscheidende:** Beide rufen **denselben** `export_dutypay`-Service. Geschäftslogik wandert 1:1, nur der Wrapper wechselt.
 
 ### Migrations-Checkliste
 
@@ -225,4 +236,4 @@ async def export_dutypay(month: str, repo: InvoiceRepository = Depends(get_repo)
 
 ### Kernaussage
 
-Was hier in `jtl2datev` gebaut wird, ist effektiv schon das spätere `backend/core/modules/jtl2datev/` des ERP. Nur `cli.py` fällt weg, und `db_jtl.py` wird perspektivisch durch `db_toci.py` ergänzt oder ersetzt. Alle übrigen Module — Steuern, Regeln, DATEV-Export — wandern ohne Änderung mit.
+Was hier in `jtl2datev` gebaut wird, ist effektiv schon das spätere `backend/core/modules/jtl2datev/` des ERP. `core/` (inkl. `services/`) wandert 1:1; `db_jtl.py` wird perspektivisch durch `db_toci.py` ergänzt oder ersetzt; `cli/` bleibt für Admin-Tasks oder fällt weg; das `api/`-Skeleton wächst um Auth, CORS und die deferred Endpoints.
