@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from jtl2datev.core.models import PartyAddress, RawInvoice, RawInvoiceLine, TaxTreatment
-from jtl2datev.core.pipeline import ReconcileReport, run_reconcile
+from jtl2datev.core.reconcile import ReconcileReport, run_reconcile
 
 OWN_VAT = frozenset({"DE", "FR", "IT", "ES", "PL", "CZ", "GB"})
 

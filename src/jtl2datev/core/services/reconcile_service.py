@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from jtl2datev.core.config import Settings
-from jtl2datev.core.pipeline import ReconcileReport, run_reconcile
+from jtl2datev.core.reconcile import ReconcileReport, run_reconcile
 from jtl2datev.core.repositories import InvoiceRepository
 
 __all__ = ["ReconcileRequest", "ReconcileResult", "reconcile"]

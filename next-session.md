@@ -2,7 +2,9 @@
 
 ## Status
 
-**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) + Sprint C Phase 3 (BuchungsRow-Refactor) + Sprint D (Compliance-Polish) + W-5 (DutyPay-Vorzeichen-Check) umgesetzt (2026-05-10).**
+**Pipeline erweitert: Fremdwährung, DutyPay-Export, Taxually-Export, DATEV-Archiv, Amazon-Verbringungen (6-Tier-Lookup: B-Ware + ASIN), BMF-Wechselkurs-Import (2026-05-08). Sprint A (IO-Sicherheit) + Sprint B (Tax-Korrektheit) + Sprint C Phase 1 (Architektur-Hygiene) + Sprint C Phase 3 (BuchungsRow-Refactor) + Sprint D (Compliance-Polish) + W-5 (DutyPay-Vorzeichen-Check) + W-19 (pipeline.py → reconcile.py konsolidiert) umgesetzt (2026-05-10).**
+
+**Review-Findings:** Erledigte Sprint A–D + Einzel-Tickets gestrichen, alte Detail-Reports entfernt. Bewusst aufgeschobene Punkte (B-7, B-8, W-2, W-3, W-6, W-7) sowie als nicht relevant markierte (B-5 RO-Stichtag entfällt vor 2026, B-6 eBay UK entfällt da nicht genutzt) dokumentiert in `docs/review/deferred.md`.
 
 **Architektur-Cleanup:** `core/reference_data.py` zentralisiert Stammdaten (EU-Länder, Währungen, Plattformen, Min-Datum). `RawInvoiceLine` auf Kern-Felder reduziert (12 nie gelesene Item-Felder entfernt). `BuchungsRow`-Dataclass mit 22 benannten Feldern, `to_csv_row()`-Methode als Single Source of Truth für 124-Spalten-Mapping. 427 Tests grün.
 
